@@ -1,0 +1,1 @@
+module opensafe::transfer_operation {}

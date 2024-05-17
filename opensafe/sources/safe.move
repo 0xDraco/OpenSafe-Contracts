@@ -2,38 +2,37 @@ module opensafe::safe {
     use std::ascii;
     use std::string::String;
 
-    use sui::table_vec::{Self, TableVec};
     use sui::vec_map::{Self, VecMap};
     use sui::transfer::Receiving;
     use sui::url::{Self, Url};
     use sui::clock::Clock;
     use sui::coin::Coin;
     use sui::math;
-    
+    use sui::dynamic_field as field;
+
+    use opensafe::package::Package;
+    use opensafe::storage::{Self, Storage};
     use opensafe::treasury::{Self, Treasury};
 
     public struct Safe has key {
         id: UID,
-        /// The ID of the safe's treasury, where the safe's assets are stored.
+        /// The ID of the safe's treasury object.
+        /// The object stores the safe's coins and objects.
         treasury: ID,
-        /// The ID of the safe's metadata.
-        metadata: ID,
         /// The minimum number of owners that must approve a transaction before it is executed.
         threshold: u64,
         /// The minimum number of milliseconds that must pass before a transaction is executed.
         execution_delay_ms: u64,
-        /// A mapping of the safe owners to their respective `OwnerCap` IDs.
-        owners: VecMap<address, ID>,
-        /// A `TableVec` of the safe transaction IDs.
-        transactions: TableVec<ID>,
         /// The index of the last invalidated transaction.
         /// Any transaction with an index less than this is invalidated and can no longer be executed.
         invalidation_index: u64,
+        /// A mapping of the safe owners to their respective `OwnerCap` IDs.
+        owners: VecMap<address, ID>,
+        /// Safe metadata like name, description, logo_url etc.
+        metadata: Metadata,
     }
 
-    public struct SafeMetadata has key {
-        id: UID,
-        safe: ID,
+    public struct Metadata has store {
         /// The name of the safe.
         name: String,
         /// The URL of the safe's logo.
@@ -68,24 +67,25 @@ module opensafe::safe {
 
     // ===== Public functions =====
 
-    public fun new(name: String, description: Option<String>, logo_url: Option<ascii::String>, threshold: u64, owners: vector<address>, clock: &Clock, ctx: &mut TxContext): (Safe, Treasury, SafeMetadata) {
+    public fun new(name: String, description: Option<String>, logo_url: Option<ascii::String>, threshold: u64, owners: vector<address>, clock: &Clock, ctx: &mut TxContext): (Safe, Treasury) {
         assert!(!owners.is_empty(), EOwnersCannotBeEmpty);
         assert!(owners.contains(&ctx.sender()), ESenderNotInOwners);
         assert!(threshold > 0 && threshold <= owners.length(), EThresholdOutOfRange);
 
         let id = object::new(ctx);
-        let treasury = treasury::new(id.to_inner(), ctx);
-        let metadata = new_metadata(id.to_inner(), name, logo_url, description, clock, ctx);
+        let inner_id = id.to_inner();
+
+        let treasury = treasury::new(inner_id, ctx);
+        let metadata = new_metadata(name, logo_url, description, clock);
 
         let mut safe = Safe {
             id,
+            metadata,
             threshold,
             execution_delay_ms: 0,
             invalidation_index: 0,
             treasury: treasury.id(),
             owners: vec_map::empty(),
-            metadata: metadata.id.to_inner(),
-            transactions: table_vec::empty(ctx)
         };
 
         let (mut i, len) = (0, owners.length());
@@ -96,7 +96,7 @@ module opensafe::safe {
             i = i + 1;
         };
 
-        (safe, treasury, metadata)
+        (safe, treasury)
     }
 
     #[allow(lint(share_owned))]
@@ -104,9 +104,19 @@ module opensafe::safe {
         transfer::share_object(self);
     }
 
-    #[allow(lint(share_owned))]
-    public fun share_metadata(metadata: SafeMetadata) {
-        transfer::share_object(metadata);
+    public fun add_package(self: &mut Safe, package: Package) {
+        let mut storage = self.load_storage_mut();
+        storage.add_package(package);
+    }
+
+    fun load_storage_mut(self: &mut Safe): &mut Storage {
+        let storage = field::borrow_mut(&mut self.id, storage::key());
+        storage
+    }
+
+    fun load_storage(self: &Safe): &Storage {
+        let storage = field::borrow(&self.id, storage::key());
+        storage
     }
 
     public fun receive_coin<C>(self: &mut Safe, treasury: &mut Treasury, coin: Receiving<Coin<C>>) {
@@ -119,38 +129,37 @@ module opensafe::safe {
         treasury.deposit_object(transfer::public_receive(&mut self.id, object));
     }
 
-    public fun update_name(self: &Safe, metadata: &mut SafeMetadata, name: String, owner_cap: &OwnerCap, ctx: &mut TxContext) {
+    public fun update_name(self: &mut Safe, name: String, owner_cap: &OwnerCap, ctx: &mut TxContext) {
         self.validate_owner_cap(owner_cap, ctx);
-        metadata.name = name;
+        self.metadata.name = name;
     }
 
-    public fun update_description(self: &Safe, metadata: &mut SafeMetadata, description: String, owner_cap: &OwnerCap, ctx: &mut TxContext) {
+    public fun update_description(self: &mut Safe, description: String, owner_cap: &OwnerCap, ctx: &mut TxContext) {
         self.validate_owner_cap(owner_cap, ctx);
-        metadata.description = option::some(description);
+        self.metadata.description = option::some(description);
     }
 
-    public fun update_logo_url(self: &Safe, metadata: &mut SafeMetadata, logo_url: ascii::String, owner_cap: &OwnerCap, ctx: &mut TxContext) {
+    public fun update_logo_url(self: &mut Safe, logo_url: ascii::String, owner_cap: &OwnerCap, ctx: &mut TxContext) {
         self.validate_owner_cap(owner_cap, ctx);
-        metadata.logo_url = option::some(url::new_unsafe(logo_url));
+        self.metadata.logo_url = option::some(url::new_unsafe(logo_url));
     }
 
     // ===== Internal functions =====
-    fun new_metadata(safe: ID, name: String, logo_url: Option<ascii::String>, description: Option<String>, clock: &Clock, ctx: &mut TxContext): SafeMetadata {
+    fun new_metadata(name: String, logo_url: Option<ascii::String>, description: Option<String>, clock: &Clock): Metadata {
         let logo_url = if(logo_url.is_some()) {
             option::some(url::new_unsafe(logo_url.destroy_some()))
         } else {
             option::none()
         };
 
-        SafeMetadata {
-            id: object::new(ctx),
-            safe,
+        Metadata {
             name,
             logo_url,
             description,
             created_at_ms: clock.timestamp_ms()
         }
     }
+
 
     // ===== Package functions =====
 
@@ -188,11 +197,13 @@ module opensafe::safe {
     }
 
     public(package) fun add_transaction(self: &mut Safe, transaction: ID) {
-        self.transactions.push_back(transaction);
+        let mut storage = self.load_storage_mut();
+        storage.add_transaction(transaction);
     }
 
     public(package) fun invalidate_transactions(self: &mut Safe) {
-        self.invalidation_index = self.transactions.length() - 1;
+        let mut storage = self.load_storage_mut();
+        self.invalidation_index = storage.total_transactions() - 1;
     }
 
     public(package) fun increment_vote_count(owner: &mut OwnerCap, kind: u64) {
@@ -223,15 +234,15 @@ module opensafe::safe {
         object::id(self)
     }
 
-    public fun name(metadata: &SafeMetadata): String {
+    public fun name(metadata: &Metadata): String {
         metadata.name
     }
 
-    public fun description(metadata: &SafeMetadata): Option<String> {
+    public fun description(metadata: &Metadata): Option<String> {
         metadata.description
     }
 
-    public fun logo_url(metadata: &SafeMetadata): Option<Url> {
+    public fun logo_url(metadata: &Metadata): Option<Url> {
         metadata.logo_url
     }
     
@@ -248,7 +259,8 @@ module opensafe::safe {
     }
 
     public fun total_transactions(self: &Safe): u64 {
-        self.transactions.length()
+        let storage = self.load_storage();
+        storage.total_transactions()
     }
 
     public fun invalidation_index(self: &Safe): u64 {
@@ -267,10 +279,14 @@ module opensafe::safe {
         MAX_EXECUTION_DELAY_MS
     }
 
+
+
     // ===== view functions =====
 
     public fun get_transactions(self: &Safe, offset_opt: Option<u64>, limit_opt: Option<u64>): vector<ID> {
-        let transactions_count = self.transactions.length();
+        let storage = self.load_storage();
+        let transactions_count = storage.total_transactions();
+
         let offset = offset_opt.destroy_with_default(0);
         let limit = limit_opt.destroy_with_default(transactions_count);
         assert!(offset <= transactions_count, EInvalidOffset);
@@ -279,7 +295,7 @@ module opensafe::safe {
         let (mut curr_index, mut transactions) = (offset, vector::empty());
 
         while (curr_index < end) {
-            transactions.push_back(self.transactions[curr_index]);
+            transactions.push_back(storage.transaction_at(curr_index));
             curr_index = curr_index + 1;
         };
 

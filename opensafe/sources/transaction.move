@@ -1,12 +1,8 @@
 module opensafe::transaction {
-    use std::string::String;
-
     use sui::bcs;
     use sui::clock::Clock;
-    use sui::vec_map::VecMap;
 
     use opensafe::safe::{Self, OwnerCap, Safe};
-    use opensafe::call_context::CallContext;
     use opensafe::parser;
 
     public struct Transaction has key {
@@ -75,7 +71,7 @@ module opensafe::transaction {
     const CHANGE_THRESHOLD_OPERATION: u64 = 2;
     const CHANGE_EXECUTION_DELAY_OPERATION: u64 = 3;
 
-
+    const ESafeStorageMismatch: u64 = 0;
     const EInvalidOwnerCap: u64 = 0;
     const EEmptyTransactionData: u64 = 1;
     const EInvalidTransactionData: u64 = 2;

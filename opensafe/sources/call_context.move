@@ -3,12 +3,12 @@ module opensafe::call_context {
 
     use opensafe::safe::{Safe, OwnerCap};
     use opensafe::transaction::Transaction;
-
+    
     public struct CallContext has drop {
         safe: ID,
         caller: address,
         timestamp_ms: u64,
-        transaction: Option<ID>,
+        transaction: Option<ID>
     }
 
     const EInvalidOwnerCap: u64 = 0;

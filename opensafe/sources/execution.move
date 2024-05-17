@@ -63,7 +63,7 @@ module opensafe::execution {
             i = i + 1;
         };
 
-        safe.invalidate_transactions();
+        // safe.invalidate_transactions();
         transaction.confirm_execution(clock, ctx);
     }
 
