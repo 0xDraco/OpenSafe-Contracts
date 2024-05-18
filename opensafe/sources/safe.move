@@ -48,8 +48,8 @@ module opensafe::safe {
     public struct OwnerCap has key {
         id: UID,
         safe: ID,
-        /// The number of proposals this owner has created.
-        proposals_count: u64,
+        /// The number of transactions this owner has created.
+        transactions_count: u64,
         /// The number of votes this owner has cast.
         votes_count: vector<u64>, // 0: approved, 1: rejected, 2: cancelled
     }
@@ -156,7 +156,7 @@ module opensafe::safe {
         let owner_cap = OwnerCap { 
             id: object::new(ctx), 
             safe: self.id.to_inner(),
-            proposals_count: 0,
+            transactions_count: 0,
             votes_count: vector[0, 0, 0]
         };
 
