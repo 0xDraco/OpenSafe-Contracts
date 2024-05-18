@@ -2,18 +2,20 @@ module opensafe::safe {
     use std::ascii;
     use std::string::String;
 
-    use sui::table_vec::{Self, TableVec};
     use sui::vec_map::{Self, VecMap};
     use sui::transfer::Receiving;
     use sui::url::{Self, Url};
     use sui::clock::Clock;
     use sui::coin::Coin;
-    use sui::math;
 
     use opensafe::treasury::{Self, Treasury};
+    use opensafe::storage::{Self, Storage};
 
     public struct Safe has key {
         id: UID,
+        /// The ID of the safe's treasury object.
+        /// The object stores the safe's coins and objects.
+        storage: ID,
         /// The ID of the safe's treasury object.
         /// The object stores the safe's coins and objects.
         treasury: ID,
@@ -28,8 +30,6 @@ module opensafe::safe {
         owners: VecMap<address, ID>,
         /// Safe metadata like name, description, logo_url etc.
         metadata: Metadata,
-        packages: TableVec<ID>,
-        transactions: TableVec<ID>,
     }
 
     public struct Metadata has store {
@@ -62,12 +62,11 @@ module opensafe::safe {
     const EExecutionDelayOutOfRange: u64 = 5;
     const EInvalidOwnerCap: u64 = 6;
     const EVoteCountOutOfRange: u64 = 7;
-    const EInvalidOffset: u64 = 8;
     const ESafeTreasuryMismatch: u64 = 9;
 
     // ===== Public functions =====
 
-    public fun new(name: String, description: Option<String>, logo_url: Option<ascii::String>, threshold: u64, owners: vector<address>, clock: &Clock, ctx: &mut TxContext): (Safe, Treasury) {
+    public fun new(name: String, description: Option<String>, logo_url: Option<ascii::String>, threshold: u64, owners: vector<address>, clock: &Clock, ctx: &mut TxContext): (Safe, Treasury, Storage) {
         assert!(!owners.is_empty(), EOwnersCannotBeEmpty);
         assert!(owners.contains(&ctx.sender()), ESenderNotInOwners);
         assert!(threshold > 0 && threshold <= owners.length(), EThresholdOutOfRange);
@@ -76,6 +75,7 @@ module opensafe::safe {
         let inner_id = id.to_inner();
 
         let treasury = treasury::new(inner_id, ctx);
+        let storage = storage::new(inner_id, ctx);
         let metadata = new_metadata(name, logo_url, description, clock);
 
         let mut safe = Safe {
@@ -83,11 +83,10 @@ module opensafe::safe {
             metadata,
             threshold,
             execution_delay_ms: 0,
+            storage: storage.id(),
             invalidation_number: 0,
             treasury: treasury.id(),
             owners: vec_map::empty(),
-            packages: table_vec::empty(ctx),
-            transactions: table_vec::empty(ctx),
         };
 
         let (mut i, len) = (0, owners.length());
@@ -98,7 +97,7 @@ module opensafe::safe {
             i = i + 1;
         };
 
-        (safe, treasury)
+        (safe, treasury, storage)
     }
 
     #[allow(lint(share_owned))]
@@ -183,16 +182,8 @@ module opensafe::safe {
         self.execution_delay_ms = execution_delay_ms;
     }
 
-    public(package) fun add_transaction(self: &mut Safe, transaction: ID) {
-        self.transactions.push_back(transaction);
-    }
-
-    public(package) fun add_package(self: &mut Safe, package: ID) {
-        self.packages.push_back(package);
-    }
-
-    public(package) fun invalidate_transactions(self: &mut Safe) {
-        self.invalidation_number = self.transactions.length() - 1;
+    public(package) fun set_invalidation_number(self: &mut Safe, number: u64) {
+        self.invalidation_number = number;
     }
 
     public(package) fun increment_vote_count(owner: &mut OwnerCap, kind: u64) {
@@ -251,14 +242,6 @@ module opensafe::safe {
         self.execution_delay_ms
     }
 
-    public fun total_transactions(self: &Safe): u64 {
-        self.transactions.length()
-    }
-
-    public fun total_packages(self: &Safe): u64 {
-        self.packages.length()
-    }
-
     public fun invalidation_number(self: &Safe): u64 {
         self.invalidation_number
     }
@@ -273,46 +256,6 @@ module opensafe::safe {
 
     public fun max_execution_delay_ms(): u64 {
         MAX_EXECUTION_DELAY_MS
-    }
-
-
-
-    // ===== view functions =====
-
-    public fun get_transactions(self: &Safe, offset_opt: Option<u64>, limit_opt: Option<u64>): vector<ID> {
-        let transactions_count = self.transactions.length();
-
-        let offset = offset_opt.destroy_with_default(0);
-        let limit = limit_opt.destroy_with_default(transactions_count);
-        assert!(offset <= transactions_count, EInvalidOffset);
-
-        let end = math::min(offset + limit, transactions_count);
-        let (mut i, mut transactions) = (offset, vector::empty());
-
-        while (i < end) {
-            transactions.push_back(self.transactions[i]);
-            i = i + 1;
-        };
-
-        transactions
-    }
-
-    public fun get_packages(self: &Safe, offset_opt: Option<u64>, limit_opt: Option<u64>): vector<ID> {
-        let packages_count = self.packages.length();
-
-        let offset = offset_opt.destroy_with_default(0);
-        let limit = limit_opt.destroy_with_default(packages_count);
-        assert!(offset <= packages_count, EInvalidOffset);
-
-        let end = math::min(offset + limit, packages_count);
-        let (mut i, mut packages) = (offset, vector::empty());
-
-        while (i < end) {
-            packages.push_back(self.packages[i]);
-            i = i + 1;
-        };
-
-        packages
     }
 
     // ===== Assertions & Validations =====

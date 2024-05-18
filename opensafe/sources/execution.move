@@ -3,6 +3,7 @@ module opensafe::execution {
 
     use opensafe::utils;
     use opensafe::parser;
+    use opensafe::storage::Storage;
     use opensafe::treasury::Treasury;
     use opensafe::safe::{Safe, OwnerCap};
     use opensafe::transaction::{
@@ -55,7 +56,7 @@ module opensafe::execution {
     const ETransactionIsInvalidated: u64 = 8;
     const ETransactionDelayNotExpired: u64 = 9;
 
-    public fun execute_management(safe: &mut Safe, transaction: &mut Transaction, owner_cap: &OwnerCap, clock: &Clock, ctx: &mut TxContext) {
+    public fun execute_management(safe: &mut Safe, storage: &mut Storage, transaction: &mut Transaction, owner_cap: &OwnerCap, clock: &Clock, ctx: &mut TxContext) {
         assert!(transaction.kind() == management_transaction_kind(), EInvalidTransactionKind);
         assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
         assert_transaction_readiness(safe, transaction, clock);
@@ -66,7 +67,7 @@ module opensafe::execution {
             i = i + 1;
         };
 
-        // safe.invalidate_transactions();
+        safe.set_invalidation_number(storage.total_transactions() - 1);
         transaction.confirm_execution(clock, ctx);
     }
 

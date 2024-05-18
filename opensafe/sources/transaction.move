@@ -2,9 +2,10 @@ module opensafe::transaction {
     use sui::bcs;
     use sui::clock::Clock;
 
+    use opensafe::parser;
+    use opensafe::storage::Storage;
     use opensafe::safe::{Self, OwnerCap, Safe};
     use opensafe::constants::{transaction_status_active, transaction_status_approved};
-    use opensafe::parser;
 
     public struct Transaction has key {
         id: UID,
@@ -78,12 +79,11 @@ module opensafe::transaction {
     const EAlreadyRejectedTransaction: u64 = 7;
     const EAlreadyCancelledTransaction: u64 = 8;
 
-    public fun new(safe: &mut Safe, payload: vector<vector<u8>>, kind: u64, owner_cap: &mut OwnerCap, clock: &Clock, ctx: &mut TxContext): Transaction {
+    public fun new(safe: &mut Safe, storage: &mut Storage, payload: vector<vector<u8>>, kind: u64, owner_cap: &mut OwnerCap, clock: &Clock, ctx: &mut TxContext): Transaction {
         assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
         assert!(!payload.is_empty(), EEmptyTransactionData);
 
         validate_payload(payload, kind);
-
         let metadata = new_metadata(safe.threshold(), ctx.sender(), clock.timestamp_ms());
         let transaction = Transaction {
             id: object::new(ctx),
@@ -95,11 +95,11 @@ module opensafe::transaction {
             approved: vector::empty(),
             rejected: vector::empty(),
             cancelled: vector::empty(),
-            sequence_number: safe.total_transactions(),
+            sequence_number: storage.total_transactions(),
             last_status_update_ms: clock.timestamp_ms(),
         };
 
-        safe.add_transaction(transaction.id());
+        storage.add_transaction(transaction.id());
         transaction
     }
 

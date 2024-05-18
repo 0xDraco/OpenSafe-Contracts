@@ -5,6 +5,7 @@ module opensafe::package {
     use sui::clock::Clock;
     use sui::package::{UpgradeCap, UpgradeTicket, UpgradeReceipt};
 
+    use opensafe::storage::Storage;
     use opensafe::safe::{Safe, OwnerCap};
     use opensafe::transaction::Transaction;
     use opensafe::execution::ProgrammableTransaction;
@@ -65,8 +66,9 @@ module opensafe::package {
     const EUpgradeTransactionMismatch: u64 = 10;
 
     public fun new(
-        safe: &mut Safe,
+        safe: &Safe,
         owner_cap: &OwnerCap,
+        storage: &mut Storage,
         name: Option<String>,
         upgrade_cap: UpgradeCap, 
         ctx: &mut TxContext
@@ -82,7 +84,7 @@ module opensafe::package {
             upgrade_cap,
         };
 
-        safe.add_package(package.id.to_inner());
+        storage.add_package(package.id.to_inner());
         package
     }
 
@@ -111,7 +113,7 @@ module opensafe::package {
         upgrade
     }
 
-    public fun authorize_upgrade(self: &mut Package, ptb: &ProgrammableTransaction, upgrade: &Upgrade): UpgradeTicket {       
+    public fun authorize_upgrade(self: &mut Package, upgrade: &Upgrade, ptb: &ProgrammableTransaction): UpgradeTicket {       
         assert!(upgrade.payload.is_some(), EUpgradePayloadIsRequired);
         assert!(upgrade.executed_at_ms.is_none(), EUpgradeAlreadyExecuted);
         assert!(self.upgrades.contains(upgrade.id.as_inner()), EInvalidUpgrade);
