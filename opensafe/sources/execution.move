@@ -41,6 +41,9 @@ module opensafe::execution {
         commands: vector<vector<u8>>
     }
 
+    public use fun ptb_safe as ProgrammableTransaction.safe;
+    public use fun ptb_transaction as ProgrammableTransaction.transaction;
+
     const EInvalidOwnerCap: u64 = 0;
     const ESafeTreasuryMismatch: u64 = 1;
     const ESafeTransactionMismatch: u64 = 2;
@@ -160,6 +163,14 @@ module opensafe::execution {
         };
 
         transaction.confirm_execution(clock, ctx);
+    }
+
+    public fun ptb_safe(ptb: &ProgrammableTransaction): ID {
+        ptb.safe
+    }
+
+    public fun ptb_transaction(ptb: &ProgrammableTransaction): ID {
+        ptb.transaction
     }
 
     /// ===== Assertion functions =====

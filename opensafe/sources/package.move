@@ -7,6 +7,7 @@ module opensafe::package {
 
     use opensafe::safe::{Safe, OwnerCap};
     use opensafe::transaction::Transaction;
+    use opensafe::execution::ProgrammableTransaction;
 
     public struct Package has key {
         id: UID,
@@ -61,6 +62,7 @@ module opensafe::package {
     const EPackageReceiptMismatch: u64 = 7;
     const EUpgradeAlreadyExecuted: u64 = 8;
     const EPackageVersionError: u64 = 9;
+    const EUpgradeTransactionMismatch: u64 = 10;
 
     public fun new(
         safe: &mut Safe,
@@ -109,10 +111,11 @@ module opensafe::package {
         upgrade
     }
 
-    public fun authorize_upgrade(self: &mut Package, upgrade: &Upgrade): UpgradeTicket {       
+    public fun authorize_upgrade(self: &mut Package, ptb: &ProgrammableTransaction, upgrade: &Upgrade): UpgradeTicket {       
         assert!(upgrade.payload.is_some(), EUpgradePayloadIsRequired);
         assert!(upgrade.executed_at_ms.is_none(), EUpgradeAlreadyExecuted);
         assert!(self.upgrades.contains(upgrade.id.as_inner()), EInvalidUpgrade);
+        assert!(ptb.transaction() == upgrade.transaction, EUpgradeTransactionMismatch);
         assert!(upgrade_cap_id(&self.upgrade_cap) == upgrade.upgrade_cap,  EPackagePayloadMismatch);
 
         let policy = self.upgrade_cap.policy();
