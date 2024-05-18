@@ -5,9 +5,13 @@ module opensafe::package {
     use sui::clock::Clock;
     use sui::package::{UpgradeCap, UpgradeTicket, UpgradeReceipt};
 
-    public struct Package has store {
-        /// The ID of the current version of the package
-        current: ID,
+    use opensafe::safe::{Safe, OwnerCap};
+    use opensafe::transaction::Transaction;
+
+    public struct Package has key {
+        id: UID,
+        /// The ID of the latest version of the package
+        latest: ID,
         /// The name of the package (optional)
         name: Option<String>,
         /// The timestamp (ms) when the package was last upgraded
@@ -18,8 +22,7 @@ module opensafe::package {
         upgrade_cap: UpgradeCap,
     }
 
-    public struct UpgradePayload has key {
-        id: UID,
+    public struct UpgradePayload has store, copy, drop {
         /// The digest of the modules and dependencies, used for verification and integrity checks
         digest: vector<u8>,
         /// The serialized bytecode of the package's modules
@@ -38,10 +41,10 @@ module opensafe::package {
         /// The ID of the package's `UpgradeCap`
         upgrade_cap: ID,
         /// The ID transaction that is associated with this upgrade
-        // transaction: ID,
+        transaction: ID,
         /// The ID of the object where the package payload is stored
         /// This object will be deleted after the upgrade, as the payload is no longer needed
-        payload: Option<ID>,
+        payload: Option<UpgradePayload>,
         /// The time (ms) when this upgrade was creaated
         created_at_ms: u64,
         /// The time (ms) when the upgrade was executed
@@ -51,6 +54,7 @@ module opensafe::package {
     public struct Witness has drop {}
 
     const EInvalidUpgrade: u64 = 1;
+    const EInvalidOwnerCap: u64 = 2;
     const EUpgradePayloadIsRequired: u64 = 4;
     const EPackagePayloadMismatch: u64 = 5;
     const EUpgradeReceiptMismatch: u64 = 6;
@@ -58,60 +62,74 @@ module opensafe::package {
     const EUpgradeAlreadyExecuted: u64 = 8;
     const EPackageVersionError: u64 = 9;
 
-    public fun new(name: Option<String>, upgrade_cap: UpgradeCap, ctx: &mut TxContext): Package {
-        let current = upgrade_cap.package();
+    public fun new(
+        safe: &Safe,
+        owner_cap: &OwnerCap,
+        name: Option<String>,
+        upgrade_cap: UpgradeCap, 
+        ctx: &mut TxContext
+    ): Package {
+        assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
 
         Package {
+            id: object::new(ctx),
             name,
-            current,
-            upgrade_cap,
             last_upgrade_ms: 0,
             upgrades: vector::empty(),
+            latest: upgrade_cap.package(),
+            upgrade_cap,
         }
     }
 
-    public fun new_upgrade(self: &mut Package, digest: vector<u8>, modules: vector<u8>, dependencies: vector<ID>, clock: &Clock, ctx: &mut TxContext): (Upgrade, UpgradePayload) {
-       let payload = UpgradePayload { id: object::new(ctx), digest, modules, dependencies };
+    public fun new_upgrade(
+        self: &mut Package,
+        transaction: &Transaction,
+        digest: vector<u8>,
+        modules: vector<u8>,
+        dependencies: vector<ID>,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ): Upgrade {
+       let payload = UpgradePayload { digest, modules, dependencies };
         let upgrade = Upgrade {
             id: object::new(ctx),
-            package: self.current,
+            package: self.latest,
+            transaction: transaction.id(),
+            payload: option::some(payload),
             version: self.upgrade_cap.version(),
             upgrade_cap: upgrade_cap_id(&self.upgrade_cap),
-            payload: option::some(payload.id.to_inner()),
             created_at_ms: clock.timestamp_ms(),
             executed_at_ms: option::none()
         };
 
         self.upgrades.push_back(upgrade.id.to_inner());
-        (upgrade, payload)
+        upgrade
     }
 
-    public fun authorize_upgrade(self: &mut Package, upgrade: &Upgrade, payload: &UpgradePayload): UpgradeTicket {       
+    public fun authorize_upgrade(self: &mut Package, upgrade: &Upgrade): UpgradeTicket {       
         assert!(upgrade.payload.is_some(), EUpgradePayloadIsRequired);
         assert!(upgrade.executed_at_ms.is_none(), EUpgradeAlreadyExecuted);
         assert!(self.upgrades.contains(upgrade.id.as_inner()), EInvalidUpgrade);
-        assert!(upgrade.payload.borrow() == payload.id.as_inner(),  EPackagePayloadMismatch);
         assert!(upgrade_cap_id(&self.upgrade_cap) == upgrade.upgrade_cap,  EPackagePayloadMismatch);
 
         let policy = self.upgrade_cap.policy();
-        self.upgrade_cap.authorize_upgrade(policy, payload.digest)
+        let digest = upgrade.payload.borrow().digest;
+        self.upgrade_cap.authorize_upgrade(policy, digest)
     }
 
-    public fun commit_upgrade(self: &mut Package, upgrade: &mut Upgrade, payload: UpgradePayload, receipt: UpgradeReceipt, clock: &Clock) {
-        let UpgradePayload {id,  modules: _, dependencies: _, digest: _} = payload;
-
+    public fun commit_upgrade(self: &mut Package, upgrade: &mut Upgrade, receipt: UpgradeReceipt, clock: &Clock) {
         assert!(self.upgrades.contains(upgrade.id.as_inner()), EInvalidUpgrade);
         assert!(self.upgrade_cap.version() == upgrade.version, EPackageVersionError);
         assert!(self.upgrade_cap.package() != receipt.package(), EPackageReceiptMismatch);
         assert!(upgrade_cap_id(&self.upgrade_cap) == receipt.cap(), EUpgradeReceiptMismatch);
         assert!(upgrade_cap_id(&self.upgrade_cap) == upgrade.upgrade_cap,  EPackagePayloadMismatch);
 
-        id.delete();
+        // upgrade.payload.destroy_some();
 
         upgrade.version = upgrade.version + 1;
         upgrade.executed_at_ms.fill(clock.timestamp_ms());
 
-        self.current = receipt.package();
+        self.latest = receipt.package();
         self.last_upgrade_ms = clock.timestamp_ms();
 
         self.upgrade_cap.commit_upgrade(receipt);

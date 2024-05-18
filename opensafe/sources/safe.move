@@ -10,7 +10,6 @@ module opensafe::safe {
     use sui::math;
     use sui::dynamic_field as field;
 
-    use opensafe::package::Package;
     use opensafe::storage::{Self, Storage};
     use opensafe::treasury::{Self, Treasury};
 
@@ -30,6 +29,9 @@ module opensafe::safe {
         owners: VecMap<address, ID>,
         /// Safe metadata like name, description, logo_url etc.
         metadata: Metadata,
+
+        transactions: TableVec<ID>,
+        packages: TableVec<ID>
     }
 
     public struct Metadata has store {
@@ -102,21 +104,6 @@ module opensafe::safe {
     #[allow(lint(share_owned))]
     public fun share(self: Safe) {
         transfer::share_object(self);
-    }
-
-    public fun add_package(self: &mut Safe, package: Package) {
-        let mut storage = self.load_storage_mut();
-        storage.add_package(package);
-    }
-
-    fun load_storage_mut(self: &mut Safe): &mut Storage {
-        let storage = field::borrow_mut(&mut self.id, storage::key());
-        storage
-    }
-
-    fun load_storage(self: &Safe): &Storage {
-        let storage = field::borrow(&self.id, storage::key());
-        storage
     }
 
     public fun receive_coin<C>(self: &mut Safe, treasury: &mut Treasury, coin: Receiving<Coin<C>>) {

@@ -1,13 +1,11 @@
 module opensafe::storage {
     use sui::table_vec::{Self, TableVec};
-    
-    use opensafe::package::Package;
 
     public struct Storage has store {
         /// The IDs of the transactions that are associated with the safe.
         transactions: TableVec<ID>,
         /// The packages that are added to the safe.
-        packages: TableVec<Package>,
+        packages: TableVec<ID>,
         // The validators that are added to the safe.
         // validators: TableVec<Validator>,
 
@@ -28,7 +26,7 @@ module opensafe::storage {
         Key {}
     }
 
-    public(package) fun add_package(self: &mut Storage, package: Package) {
+    public fun add_package(self: &mut Storage, package: ID) {
         self.packages.push_back(package);
     }
 
