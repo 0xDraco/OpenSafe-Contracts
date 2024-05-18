@@ -11,12 +11,10 @@ module opensafe::transaction {
         safe: ID,
         /// The kind of transaction (e.g. config = 0, programmable = 1).
         kind: u64,
-        /// The index of the transaction in the safe.
-        index: u64,
         /// The status of the transaction.
         status: u64,
-        /// The creator of the transaction.
-        creator: address,
+        /// The index of the transaction in the safe.
+        sequence_number: u64,
         /// The addresses that approved the transaction.
         approved: vector<address>,
         /// The addresses that rejected the transaction.
@@ -29,26 +27,24 @@ module opensafe::transaction {
         /// - Object and coin sending transactions follow the same structure.
         /// - For programmable transactions, it contains a list of three parts: transaction inputs variables, inputs, and commands.
         ///   The transaction variables come first in the list, followed by the inputs, and finally, the commands. 
-        data: vector<vector<u8>>,
-        /// The hash of the Sui transaction that executed the transaction.
-        hash: Option<vector<u8>>,
+        payload: vector<vector<u8>>,
         /// The timestamp when the status was last updated.
         last_status_update_ms: u64,
+        /// Metadata associated with the transaction
+        metadata: Metadata
     }
 
-    // public struct TransactionDisplay has key {
-    //     id: UID,
-    //     title: String,
-    //     transaction: ID,
-    //     fields: vector<VecMap<String, vector<u8>>>
-    // }
-
-
-    public struct TransactionExecutionRequest {
-        safe: ID,
-        transaction: ID,
-        /// An ordered list of the operations that have been executed.
-        executed_operations: vector<u64>,
+    /// This stores extra metadata associated with the transaction. 
+    /// These are data not used in the package, but are used on the client.
+    public struct Metadata has store {
+        /// The creator of the transaction.
+        creator: address,
+        /// The hash of the Sui transaction that executed the transaction.
+        hash: Option<vector<u8>>,
+        /// The safe threshold at the time of creation
+        creation_threshold: u64,
+        /// Timestamp when transaction was created
+        created_at_ms: u64
     }
 
     const CONFIG_TRANSACTION_KIND: u64 = 0;
@@ -71,7 +67,6 @@ module opensafe::transaction {
     const CHANGE_THRESHOLD_OPERATION: u64 = 2;
     const CHANGE_EXECUTION_DELAY_OPERATION: u64 = 3;
 
-    const ESafeStorageMismatch: u64 = 0;
     const EInvalidOwnerCap: u64 = 0;
     const EEmptyTransactionData: u64 = 1;
     const EInvalidTransactionData: u64 = 2;
@@ -81,52 +76,39 @@ module opensafe::transaction {
     const EAlreadyApprovedTransaction: u64 = 6;
     const EAlreadyRejectedTransaction: u64 = 7;
     const EAlreadyCancelledTransaction: u64 = 8;
-    const EInvalidOperationExecution: u64 = 9;
-    const EIncompleteOperationExecution: u64 = 10;
 
-
-    public fun new(
-        safe: &mut Safe,
-        kind: u64,
-        data: vector<vector<u8>>,
-        owner_cap: &mut OwnerCap,
-        clock: &Clock,
-        ctx: &mut TxContext
-    ): Transaction {
+    public fun new(safe: &mut Safe, payload: vector<vector<u8>>, kind: u64, owner_cap: &mut OwnerCap, clock: &Clock, ctx: &mut TxContext): Transaction {
         assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
-        assert!(!data.is_empty(), EEmptyTransactionData);
+        assert!(!payload.is_empty(), EEmptyTransactionData);
 
-        if(kind == CONFIG_TRANSACTION_KIND) { 
-            parse_config_transaction(data) 
-        } else if(kind == COINS_TRANSFER_TRANSACTION_KIND) {
-            // passing true to only validate the data
-            parse_coins_transfer(data, true);
-        }  else if(kind == OBJECTS_TRANSFER_TRANSACTION_KIND) {
-            // passing true to only validate the data
-            parse_objects_transfer(data, true);
-        } else if(kind == PROGRAMMABLE_TRANSACTION_KIND) {
-            assert!(data.length() == 2, EInvalidTransactionData);
-        } else {
-            abort EInvalidTransactionKind
-        };
+        validate_payload(payload, kind);
 
+        let metadata = new_metadata(safe.threshold(), ctx.sender(), clock.timestamp_ms());
         let transaction = Transaction {
             id: object::new(ctx),
             kind,
-            data,
+            payload,
+            metadata,
             safe: safe.id(),
-            hash: option::none(),
-            creator: ctx.sender(),
             status: STATUS_ACTIVE,
             approved: vector::empty(),
             rejected: vector::empty(),
             cancelled: vector::empty(),
-            index: safe.total_transactions(),
+            sequence_number: safe.total_transactions(),
             last_status_update_ms: clock.timestamp_ms(),
         };
 
         safe.add_transaction(transaction.id());
         transaction
+    }
+
+    fun new_metadata(threshold: u64, creator: address, timestamp_ms: u64): Metadata {
+        Metadata {
+            creator,
+            hash: option::none(),
+            created_at_ms: timestamp_ms,
+            creation_threshold: threshold,
+        }
     }
 
     #[allow(lint(share_owned))]
@@ -211,39 +193,14 @@ module opensafe::transaction {
         }
     }
 
-    public fun add_executed_operation(request: &mut TransactionExecutionRequest, operation: u64) {
-       request.executed_operations.push_back(operation);
-    }
-
-    public fun execute_programmable(
-        self: &mut Transaction,
-        request: TransactionExecutionRequest,
-        clock: &Clock,
-        ctx: &TxContext
-    ) {
-        let valid_operations = self.data[2];
-        let TransactionExecutionRequest { safe:_, transaction: _, executed_operations } = request;
-
-        assert!(valid_operations.length() == executed_operations.length(), EIncompleteOperationExecution);
-        
-        let (mut i, len) = (0, valid_operations.length());
-        while(i < len) {
-            assert!(valid_operations[i] as u64 == executed_operations[i], EInvalidOperationExecution);
-            i = i + 1;
-        };
-
-        self.confirm_execution(clock, ctx);
-    }
-
-
     public(package) fun confirm_execution(self: &mut Transaction, clock: &Clock, ctx: &TxContext) {
         self.status = STATUS_EXECUTED;
         self.last_status_update_ms = clock.timestamp_ms();
-        self.hash.fill(*ctx.digest());
+        self.metadata.hash.fill(*ctx.digest());
     }
 
     public(package) fun execute_config_operation(self: &Transaction, safe: &mut Safe, index: u64, ctx: &mut TxContext): u64 {
-        let (action, value) = parser::parse_data(self.data[index]);
+        let (action, value) = parser::parse_data(self.payload[index]);
         let mut bcs = bcs::new(value);
 
         if(action == ADD_OWNER_OPERATION) {
@@ -260,6 +217,19 @@ module opensafe::transaction {
         action
     }
 
+    fun validate_payload(payload: vector<vector<u8>>, kind: u64) {
+        if(kind == CONFIG_TRANSACTION_KIND) { 
+            parse_config_transaction(payload) 
+        } else if(kind == COINS_TRANSFER_TRANSACTION_KIND) {
+            parse_coins_transfer(payload, true);
+        }  else if(kind == OBJECTS_TRANSFER_TRANSACTION_KIND) {
+            parse_objects_transfer(payload, true);
+        } else if(kind == PROGRAMMABLE_TRANSACTION_KIND) {
+            assert!(payload.length() == 2, EInvalidTransactionData);
+        } else {
+            abort EInvalidTransactionKind
+        };
+    }
 
     /// ===== Getter functions =====
 
@@ -276,7 +246,7 @@ module opensafe::transaction {
     }
 
     public fun creator(self: &Transaction): address {
-        self.creator
+        self.metadata.creator
     }
 
     public fun status(self: &Transaction): u64 {
@@ -287,16 +257,16 @@ module opensafe::transaction {
         self.kind
     }
 
-    public fun index(self: &Transaction): u64 {
-        self.index
+    public fun sequence_number(self: &Transaction): u64 {
+        self.sequence_number
     }
 
     public fun hash(self: &Transaction): &Option<vector<u8>> {
-        &self.hash
+        &self.metadata.hash
     }
 
-    public fun data(self: &Transaction): &vector<vector<u8>> {
-        &self.data
+    public fun payload(self: &Transaction): &vector<vector<u8>> {
+        &self.payload
     }
 
     /// ===== Helper functions =====
@@ -322,7 +292,7 @@ module opensafe::transaction {
     }
 
     public fun is_invalidated(self: &Transaction, safe: &Safe): bool {
-        safe.invalidation_index() != 0 && self.index <= safe.invalidation_index()
+        safe.invalidation_index() != 0 && self.sequence_number <= safe.invalidation_index()
     }
 
     public fun is_execution_ready(self: &Transaction, safe: &Safe, clock: &Clock): bool {
