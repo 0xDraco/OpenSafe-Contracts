@@ -273,7 +273,7 @@ module opensafe::transaction {
     /// ===== Helper functions =====
 
     public fun is_invalidated(self: &Transaction, safe: &Safe): bool {
-        safe.invalidation_index() != 0 && self.sequence_number <= safe.invalidation_index()
+        safe.invalidation_number() != 0 && self.sequence_number <= safe.invalidation_number()
     }
 
     public fun is_execution_delay_expired(self: &Transaction, safe: &Safe, clock: &Clock): bool {

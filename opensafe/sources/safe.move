@@ -2,15 +2,14 @@ module opensafe::safe {
     use std::ascii;
     use std::string::String;
 
+    use sui::table_vec::{Self, TableVec};
     use sui::vec_map::{Self, VecMap};
     use sui::transfer::Receiving;
     use sui::url::{Self, Url};
     use sui::clock::Clock;
     use sui::coin::Coin;
     use sui::math;
-    use sui::dynamic_field as field;
 
-    use opensafe::storage::{Self, Storage};
     use opensafe::treasury::{Self, Treasury};
 
     public struct Safe has key {
@@ -24,14 +23,13 @@ module opensafe::safe {
         execution_delay_ms: u64,
         /// The index of the last invalidated transaction.
         /// Any transaction with an index less than this is invalidated and can no longer be executed.
-        invalidation_index: u64,
+        invalidation_number: u64,
         /// A mapping of the safe owners to their respective `OwnerCap` IDs.
         owners: VecMap<address, ID>,
         /// Safe metadata like name, description, logo_url etc.
         metadata: Metadata,
-
+        packages: TableVec<ID>,
         transactions: TableVec<ID>,
-        packages: TableVec<ID>
     }
 
     public struct Metadata has store {
@@ -85,9 +83,11 @@ module opensafe::safe {
             metadata,
             threshold,
             execution_delay_ms: 0,
-            invalidation_index: 0,
+            invalidation_number: 0,
             treasury: treasury.id(),
             owners: vec_map::empty(),
+            packages: table_vec::empty(ctx),
+            transactions: table_vec::empty(ctx),
         };
 
         let (mut i, len) = (0, owners.length());
@@ -184,13 +184,15 @@ module opensafe::safe {
     }
 
     public(package) fun add_transaction(self: &mut Safe, transaction: ID) {
-        let mut storage = self.load_storage_mut();
-        storage.add_transaction(transaction);
+        self.transactions.push_back(transaction);
+    }
+
+    public(package) fun add_package(self: &mut Safe, package: ID) {
+        self.packages.push_back(package);
     }
 
     public(package) fun invalidate_transactions(self: &mut Safe) {
-        let mut storage = self.load_storage_mut();
-        self.invalidation_index = storage.total_transactions() - 1;
+        self.invalidation_number = self.transactions.length() - 1;
     }
 
     public(package) fun increment_vote_count(owner: &mut OwnerCap, kind: u64) {
@@ -250,12 +252,15 @@ module opensafe::safe {
     }
 
     public fun total_transactions(self: &Safe): u64 {
-        let storage = self.load_storage();
-        storage.total_transactions()
+        self.transactions.length()
     }
 
-    public fun invalidation_index(self: &Safe): u64 {
-        self.invalidation_index
+    public fun total_packages(self: &Safe): u64 {
+        self.packages.length()
+    }
+
+    public fun invalidation_number(self: &Safe): u64 {
+        self.invalidation_number
     }
 
     public fun owners(self: &Safe): &VecMap<address, ID> {
@@ -275,22 +280,39 @@ module opensafe::safe {
     // ===== view functions =====
 
     public fun get_transactions(self: &Safe, offset_opt: Option<u64>, limit_opt: Option<u64>): vector<ID> {
-        let storage = self.load_storage();
-        let transactions_count = storage.total_transactions();
+        let transactions_count = self.transactions.length();
 
         let offset = offset_opt.destroy_with_default(0);
         let limit = limit_opt.destroy_with_default(transactions_count);
         assert!(offset <= transactions_count, EInvalidOffset);
 
         let end = math::min(offset + limit, transactions_count);
-        let (mut curr_index, mut transactions) = (offset, vector::empty());
+        let (mut i, mut transactions) = (offset, vector::empty());
 
-        while (curr_index < end) {
-            transactions.push_back(storage.transaction_at(curr_index));
-            curr_index = curr_index + 1;
+        while (i < end) {
+            transactions.push_back(self.transactions[i]);
+            i = i + 1;
         };
 
         transactions
+    }
+
+    public fun get_packages(self: &Safe, offset_opt: Option<u64>, limit_opt: Option<u64>): vector<ID> {
+        let packages_count = self.packages.length();
+
+        let offset = offset_opt.destroy_with_default(0);
+        let limit = limit_opt.destroy_with_default(packages_count);
+        assert!(offset <= packages_count, EInvalidOffset);
+
+        let end = math::min(offset + limit, packages_count);
+        let (mut i, mut packages) = (offset, vector::empty());
+
+        while (i < end) {
+            packages.push_back(self.packages[i]);
+            i = i + 1;
+        };
+
+        packages
     }
 
     // ===== Assertions & Validations =====
