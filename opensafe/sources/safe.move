@@ -234,6 +234,10 @@ module opensafe::safe {
         object::id(self)
     }
 
+    public fun treasury(self: &Safe): ID {
+        self.treasury
+    }
+
     public fun name(metadata: &Metadata): String {
         metadata.name
     }

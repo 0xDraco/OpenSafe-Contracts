@@ -3,6 +3,7 @@ module opensafe::transaction {
     use sui::clock::Clock;
 
     use opensafe::safe::{Self, OwnerCap, Safe};
+    use opensafe::constants::{transaction_status_active, transaction_status_approved};
     use opensafe::parser;
 
     public struct Transaction has key {
@@ -124,7 +125,7 @@ module opensafe::transaction {
         ctx: &TxContext
     ) {
         assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
-        assert!(self.is_active(), EInvalidTransactionStatus);
+        assert!(self.status == transaction_status_active(), EInvalidTransactionStatus);
         assert!(!self.is_invalidated(safe), ETransactionIsInvalidated);
 
         let owner = ctx.sender();
@@ -152,7 +153,7 @@ module opensafe::transaction {
         ctx: &TxContext
     ) {
         assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
-        assert!(self.is_active(), EInvalidTransactionStatus);
+        assert!(self.status == transaction_status_active(), EInvalidTransactionStatus);
         assert!(!self.is_invalidated(safe), ETransactionIsInvalidated);
 
         let owner = ctx.sender();
@@ -180,7 +181,7 @@ module opensafe::transaction {
         ctx: &TxContext
     ) {
         assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
-        assert!(self.is_approved(), EInvalidTransactionStatus);
+        assert!(self.status == transaction_status_approved(), EInvalidTransactionStatus);
         
         let owner = ctx.sender();
         assert!(!self.find_cancelled(owner).is_some(), EAlreadyCancelledTransaction);
@@ -271,32 +272,8 @@ module opensafe::transaction {
 
     /// ===== Helper functions =====
 
-    public fun is_active(self: &Transaction): bool {
-        self.status == STATUS_ACTIVE
-    }
-
-    public fun is_approved(self: &Transaction): bool {
-        self.status == STATUS_APPROVED
-    }
-
-    public fun is_rejected(self: &Transaction): bool {
-        self.status == STATUS_REJECTED
-    }
-
-    public fun is_cancelled(self: &Transaction): bool {
-        self.status == STATUS_CANCELLED
-    }
-
-    public fun is_executed(self: &Transaction): bool {
-        self.status == STATUS_EXECUTED
-    }
-
     public fun is_invalidated(self: &Transaction, safe: &Safe): bool {
         safe.invalidation_index() != 0 && self.sequence_number <= safe.invalidation_index()
-    }
-
-    public fun is_execution_ready(self: &Transaction, safe: &Safe, clock: &Clock): bool {
-        self.is_approved() && !self.is_invalidated(safe) && self.is_execution_delay_expired(safe, clock)
     }
 
     public fun is_execution_delay_expired(self: &Transaction, safe: &Safe, clock: &Clock): bool {
@@ -341,81 +318,7 @@ module opensafe::transaction {
 
         option::none()
     }
-
-    /// ===== Exposing constants =====
     
-    /// === Transaction kinds ===
-    
-    public fun config_transaction_kind(): u64 {
-        CONFIG_TRANSACTION_KIND
-    }
-
-    public fun programmable_transaction_kind(): u64 {
-        PROGRAMMABLE_TRANSACTION_KIND
-    }
-
-    public fun coins_transfer_transaction_kind(): u64 {
-        COINS_TRANSFER_TRANSACTION_KIND
-    }
-
-    public fun objects_transfer_transaction_kind(): u64 {
-        OBJECTS_TRANSFER_TRANSACTION_KIND
-    }
-
-    /// === Vote kinds ===
-    
-    public fun approved_vote_kind(): u64 {
-        APPROVED_VOTE_KIND
-    }
-
-    public fun rejected_vote_kind(): u64 {
-        REJECTED_VOTE_KIND
-    }
-
-    public fun cancelled_vote_kind(): u64 {
-        CANCELLED_VOTE_KIND
-    }
-
-    /// === Transaction statuses ===
-    
-    public fun status_active(): u64 {
-        STATUS_ACTIVE
-    }
-
-    public fun status_approved(): u64 {
-        STATUS_APPROVED
-    }
-
-    public fun status_rejected(): u64 {
-        STATUS_REJECTED
-    }
-
-    public fun status_cancelled(): u64 {
-        STATUS_CANCELLED
-    }
-
-    public fun status_executed(): u64 {
-        STATUS_EXECUTED
-    }
-
-    /// === Operation kinds ===
-    
-    public fun add_owner_operation(): u64 {
-        ADD_OWNER_OPERATION
-    }
-
-    public fun remove_owner_operation(): u64 {
-        REMOVE_OWNER_OPERATION
-    }
-
-    public fun change_threshold_operation(): u64 {
-        CHANGE_THRESHOLD_OPERATION
-    }
-
-    public fun change_execution_delay_operation(): u64 {
-        CHANGE_EXECUTION_DELAY_OPERATION
-    }
-
     /// ===== Checks & Validation functions =====
 
     public fun parse_config_transaction(data: vector<vector<u8>>) {
@@ -487,20 +390,20 @@ module opensafe::transaction {
         let (mut i, len) = (0, data.length());
 
         let mut inputs = vector::empty();
-        let mut operations = vector::empty();
+        let mut commands = vector::empty();
 
         while(i < len) {
             let (_, value) = parser::parse_data(data[i]);
-            let (inps, ops) = parser::parse_programmable_transaction_data(value);
+            let (inps, cmds) = parser::parse_programmable_transaction_data(value);
 
             if(!only_validate) {
                 inputs.append(inps);
-                operations.append(ops);
+                commands.append(cmds);
             };
             
             i = i + 1;
         };
 
-        (inputs, operations)
+        (inputs, commands)
     }
 }

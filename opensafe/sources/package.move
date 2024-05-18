@@ -58,7 +58,6 @@ module opensafe::package {
     const EUpgradeAlreadyExecuted: u64 = 8;
     const EPackageVersionError: u64 = 9;
 
-
     public fun new(name: Option<String>, upgrade_cap: UpgradeCap, ctx: &mut TxContext): Package {
         let current = upgrade_cap.package();
 

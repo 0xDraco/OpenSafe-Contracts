@@ -1,1 +1,0 @@
-module opensafe::management_operation {}

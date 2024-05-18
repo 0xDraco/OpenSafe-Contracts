@@ -1,1 +1,0 @@
-module opensafe::upgrade_operation {}
