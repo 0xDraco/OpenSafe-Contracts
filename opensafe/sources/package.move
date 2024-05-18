@@ -63,7 +63,7 @@ module opensafe::package {
     const EPackageVersionError: u64 = 9;
 
     public fun new(
-        safe: &Safe,
+        safe: &mut Safe,
         owner_cap: &OwnerCap,
         name: Option<String>,
         upgrade_cap: UpgradeCap, 
@@ -71,14 +71,17 @@ module opensafe::package {
     ): Package {
         assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
 
-        Package {
+        let package = Package {
             id: object::new(ctx),
             name,
             last_upgrade_ms: 0,
             upgrades: vector::empty(),
             latest: upgrade_cap.package(),
             upgrade_cap,
-        }
+        };
+
+        safe.add_package(package.id.to_inner());
+        package
     }
 
     public fun new_upgrade(
