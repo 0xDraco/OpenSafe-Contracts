@@ -1,7 +1,11 @@
 module opensafe::transaction {
+    use std::string::String;
+
     use sui::bcs;
     use sui::clock::Clock;
+    use sui::vec_map::VecMap;
 
+    use opensafe::utils;
     use opensafe::parser;
     use opensafe::storage::Storage;
     use opensafe::safe::{Self, OwnerCap, Safe};
@@ -33,20 +37,21 @@ module opensafe::transaction {
         /// The timestamp when the status was last updated.
         last_status_update_ms: u64,
         /// Metadata associated with the transaction
-        metadata: Metadata
+        metadata: TransactionMetadata
     }
 
     /// This stores extra metadata associated with the transaction. 
     /// These are data not used in the package, but are used on the client.
-    public struct Metadata has store {
+    public struct TransactionMetadata has store {
+        /// The safe threshold at the time of creation
+        threshold: u64,
         /// The creator of the transaction.
         creator: address,
         /// The hash of the Sui transaction that executed the transaction.
         hash: Option<vector<u8>>,
-        /// The safe threshold at the time of creation
-        creation_threshold: u64,
         /// Timestamp when transaction was created
-        created_at_ms: u64
+        created_at_ms: u64,
+        summary: Option<VecMap<String, String>>
     }
 
     const CONFIG_TRANSACTION_KIND: u64 = 0;
@@ -79,7 +84,7 @@ module opensafe::transaction {
     const EAlreadyRejectedTransaction: u64 = 7;
     const EAlreadyCancelledTransaction: u64 = 8;
 
-    public fun new(safe: &mut Safe, storage: &mut Storage, payload: vector<vector<u8>>, kind: u64, owner_cap: &mut OwnerCap, clock: &Clock, ctx: &mut TxContext): Transaction {
+    public fun new(safe: &mut Safe, owner_cap: &mut OwnerCap, storage: &mut Storage, kind: u64, payload: vector<vector<u8>>, clock: &Clock, ctx: &mut TxContext): Transaction {
         assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
         assert!(!payload.is_empty(), EEmptyTransactionData);
 
@@ -103,18 +108,23 @@ module opensafe::transaction {
         transaction
     }
 
-    fun new_metadata(threshold: u64, creator: address, timestamp_ms: u64): Metadata {
-        Metadata {
+    fun new_metadata(threshold: u64, creator: address, timestamp_ms: u64): TransactionMetadata {
+        TransactionMetadata {
             creator,
+            threshold,
             hash: option::none(),
+            summary: option::none(),
             created_at_ms: timestamp_ms,
-            creation_threshold: threshold,
         }
     }
 
     #[allow(lint(share_owned))]
     public fun share(self: Transaction) {
         transfer::share_object(self);
+    }
+
+    public fun add_summary_metadata(self: &mut Transaction, summary: vector<u8>) {
+        self.metadata.summary.fill(utils::json_to_vec_map(summary))
     }
 
     public fun approve(

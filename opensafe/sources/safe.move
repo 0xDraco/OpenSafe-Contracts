@@ -29,10 +29,10 @@ module opensafe::safe {
         /// A mapping of the safe owners to their respective `OwnerCap` IDs.
         owners: VecMap<address, ID>,
         /// Safe metadata like name, description, logo_url etc.
-        metadata: Metadata,
+        metadata: SafeMetadata,
     }
 
-    public struct Metadata has store {
+    public struct SafeMetadata has store {
         /// The name of the safe.
         name: String,
         /// The URL of the safe's logo.
@@ -131,14 +131,14 @@ module opensafe::safe {
     }
 
     // ===== Internal functions =====
-    fun new_metadata(name: String, logo_url: Option<ascii::String>, description: Option<String>, clock: &Clock): Metadata {
+    fun new_metadata(name: String, logo_url: Option<ascii::String>, description: Option<String>, clock: &Clock): SafeMetadata {
         let logo_url = if(logo_url.is_some()) {
             option::some(url::new_unsafe(logo_url.destroy_some()))
         } else {
             option::none()
         };
 
-        Metadata {
+        SafeMetadata {
             name,
             logo_url,
             description,
@@ -218,15 +218,15 @@ module opensafe::safe {
         self.treasury
     }
 
-    public fun name(metadata: &Metadata): String {
+    public fun name(metadata: &SafeMetadata): String {
         metadata.name
     }
 
-    public fun description(metadata: &Metadata): Option<String> {
+    public fun description(metadata: &SafeMetadata): Option<String> {
         metadata.description
     }
 
-    public fun logo_url(metadata: &Metadata): Option<Url> {
+    public fun logo_url(metadata: &SafeMetadata): Option<Url> {
         metadata.logo_url
     }
     

@@ -12,7 +12,7 @@ module opensafe::storage {
         // The validators that are added to the safe.
         // validators: TableVec<Validator>,
 
-        // More fields can be added here. dynamic fields? 
+        // More fields can be added here...
     }
 
     const EInvalidOffset: u64 = 0;
@@ -50,7 +50,6 @@ module opensafe::storage {
     public fun total_packages(self: &Storage): u64 {
         self.packages.length()
     }
-
 
     public fun get_transactions(self: &Storage, offset_opt: Option<u64>, limit_opt: Option<u64>): vector<ID> {
         let transactions_count = self.transactions.length();
