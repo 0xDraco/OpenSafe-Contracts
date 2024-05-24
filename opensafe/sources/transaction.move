@@ -67,32 +67,24 @@ module opensafe::transaction {
     const CHANGE_THRESHOLD_OPERATION: u64 = 2;
     const CHANGE_EXECUTION_DELAY_OPERATION: u64 = 3;
 
-    // const EInvalidOwnerCap: u64 = 0;
     const EEmptyTransactionData: u64 = 1;
     const EInvalidTransactionData: u64 = 2;
-    // const EInvalidTransactionKind: u64 = 3;
     const EInvalidTransactionStatus: u64 = 4;
-    const ETransactionIsInvalidated: u64 = 5;
+    const ETransactionIsVoid: u64 = 5;
     const EAlreadyApprovedTransaction: u64 = 6;
     const EAlreadyRejectedTransaction: u64 = 7;
     const EAlreadyCancelledTransaction: u64 = 8;
 
     // Creates a new Safe transaction.
-    public fun create(
-        safe: &mut Safe,
-        kind: u64,
-        payload: vector<vector<u8>>,
-        clock: &Clock,
-        ctx: &mut TxContext
-    ): Transaction {
+    public fun create(safe: &mut Safe, kind: u64, payload: vector<vector<u8>>, clock: &Clock, ctx: &mut TxContext): Transaction {
         safe.assert_sender_owner(ctx);
         assert!(!payload.is_empty(), EEmptyTransactionData);
 
         // validate_payload(payload, kind);
 
         let metadata = new_metadata(safe.threshold(), ctx.sender(), clock.timestamp_ms());
-        let transaction = new(safe.id(), kind, 4, payload, metadata, clock.timestamp_ms(), ctx);
-        // safe.add_transaction(transaction.id());
+        let transaction = new(safe.id(), kind, safe.transactions_count(), payload, metadata, clock.timestamp_ms(), ctx);
+        safe.add_transaction(transaction.id());
         transaction
     }
 
@@ -143,8 +135,8 @@ module opensafe::transaction {
 
     public fun approve(self: &mut Transaction, safe: &Safe, clock: &Clock, ctx: &TxContext) {
         safe.assert_sender_owner(ctx);
+        assert!(!self.is_void(safe), ETransactionIsVoid);
         assert!(self.status == transaction_status_active(), EInvalidTransactionStatus);
-        assert!(!self.is_invalidated(safe), ETransactionIsInvalidated);
 
         let owner = ctx.sender();
         assert!(!self.find_approved(owner).is_some(), EAlreadyApprovedTransaction);
@@ -163,8 +155,8 @@ module opensafe::transaction {
 
     public fun reject(self: &mut Transaction, safe: &Safe, clock: &Clock, ctx: &TxContext) {
         safe.assert_sender_owner(ctx);
+        assert!(!self.is_void(safe), ETransactionIsVoid);
         assert!(self.status == transaction_status_active(), EInvalidTransactionStatus);
-        assert!(!self.is_invalidated(safe), ETransactionIsInvalidated);
 
         let owner = ctx.sender();
         assert!(!self.find_rejected(owner).is_some(), EAlreadyRejectedTransaction);
@@ -255,8 +247,8 @@ module opensafe::transaction {
 
     /// ===== Helper functions =====
 
-    public fun is_invalidated(self: &Transaction, safe: &Safe): bool {
-        safe.invalidation_number() != 0 && self.sequence_number <= safe.invalidation_number()
+    public fun is_void(self: &Transaction, safe: &Safe): bool {
+        safe.last_void_transaction() != 0 && self.sequence_number <= safe.last_void_transaction()
     }
 
     public fun is_execution_delay_expired(self: &Transaction, safe: &Safe, clock: &Clock): bool {

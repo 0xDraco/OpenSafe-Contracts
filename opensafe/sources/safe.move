@@ -2,22 +2,23 @@ module opensafe::safe {
     use std::ascii;
     use std::string::String;
 
-    use sui::url::{Self, Url};
     use sui::clock::Clock;
+    use sui::url::{Self, Url};
+    use sui::table_vec::{Self, TableVec};
 
     public struct Safe has key {
         id: UID,
-        /// The minimum number of owners that must approve a transaction before it is executed.
         threshold: u64,
-        /// The minimum number of milliseconds that must pass before a transaction is executed.
+        /// The minimum amount of time that must pass before a transaction is allowed to be executed.
         execution_delay_ms: u64,
-        /// The index of the last invalidated transaction.
-        /// Any transaction with an index less than this is invalidated and can no longer be executed.
-        invalidation_number: u64,
-        /// A mapping of the safe owners to their respective `OwnerCap` IDs.
+        /// The sequence number of the last voided transaction.
+        last_void_transaction: u64,
+        /// A vector storing the owners of the safe.
         owners: vector<address>,
-        /// Safe metadata like name, description, logo_url etc.
+        /// Stores safe metadata like name, description, logo_url etc.
         metadata: SafeMetadata,
+        /// A `TableVec` storing the the IDs of the safe transactions.
+        transactions: TableVec<ID>
     }
 
     public struct SafeMetadata has store {
@@ -55,8 +56,9 @@ module opensafe::safe {
             metadata,
             threshold,
             execution_delay_ms: 0,
-            invalidation_number: 0,
             owners: vector::empty(),
+            last_void_transaction: 0,
+            transactions: table_vec::empty(ctx)
         };
 
         let (mut i, len) = (0, owners.length());
@@ -134,8 +136,12 @@ module opensafe::safe {
         self.execution_delay_ms = execution_delay_ms;
     }
 
-    public(package) fun set_invalidation_number(self: &mut Safe, number: u64) {
-        self.invalidation_number = number;
+    public(package) fun set_last_void_transaction(self: &mut Safe, sequence_number: u64) {
+        self.last_void_transaction = sequence_number;
+    }
+
+    public(package) fun add_transaction(self: &mut Safe, id: ID) {
+        self.transactions.push_back(id);
     }
 
     public(package) fun uid_mut_inner(self: &mut Safe): &mut UID {
@@ -175,9 +181,13 @@ module opensafe::safe {
     public fun execution_delay_ms(self: &Safe): u64 {
         self.execution_delay_ms
     }
+    
+    public fun transactions_count(self: &Safe): u64 {
+        self.transactions.length()
+    }
 
-    public fun invalidation_number(self: &Safe): u64 {
-        self.invalidation_number
+    public fun last_void_transaction(self: &Safe): u64 {
+        self.last_void_transaction
     }
 
     public fun owners(self: &Safe): &vector<address> {
