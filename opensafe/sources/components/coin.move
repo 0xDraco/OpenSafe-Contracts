@@ -29,7 +29,7 @@ module opensafe::send_coin {
             transfer::public_transfer(coin, recipient);
         } else {
             transfer::public_transfer(coin.split(amount, ctx), recipient);
-            transfer::public_transfer(coin, safe.to_address());
+            transfer::public_transfer(coin, safe.get_address());
         };
 
         assert!(bcs.into_remainder_bytes().is_empty(), 1);

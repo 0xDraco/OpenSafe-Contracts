@@ -40,7 +40,7 @@ module opensafe::ownership {
         assert!(found, EInvalidBorrowedObject);
 
         borrowable.borrowed.remove(i);
-        transfer::public_transfer(object, safe.to_address());
+        transfer::public_transfer(object, safe.get_address());
     }
     
     public fun withdraw<T: key + store>(safe: &mut Safe, withdrawable: &mut Withdrawable, receiving: Receiving<T>): T {

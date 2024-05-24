@@ -30,7 +30,7 @@ module opensafe::validator {
             abort EInvalidActionKind
         };
 
-        transfer::public_transfer(validator_cap, safe.to_address());
+        transfer::public_transfer(validator_cap, safe.get_address());
         assert!(bcs.into_remainder_bytes().is_empty(), 1);
     }
 
