@@ -17,7 +17,6 @@ module tonal::executor {
         data: vector<u8>,
     }
 
-
     public use fun destroy_executable as Executable.destroy;
     public use fun executable_kind as Executable.kind;
     public use fun executable_data as Executable.data;
@@ -57,8 +56,8 @@ module tonal::executor {
         executables
     }
 
-    public fun commit(executor: Executor, transaction: &mut Transaction, clock: &Clock, ctx: &TxContext) {
-        let Executor { safe: _, next_action_index, transaction: transaction_id } = executor;
+    public fun commit(self: Executor, transaction: &mut Transaction, clock: &Clock, ctx: &TxContext) {
+        let Executor { safe: _, next_action_index, transaction: transaction_id } = self;
         assert!(transaction.id() == transaction_id, EExecutorTransactionMismatch);
         assert!(next_action_index == transaction.payload().length(), EExecutionComplete);
 
