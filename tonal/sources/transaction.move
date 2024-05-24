@@ -12,7 +12,7 @@ module tonal::transaction {
         id: UID,
         /// The safe this transaction belongs to.
         safe: ID,
-        /// The kind of transaction (e.g. config = 0, programmable = 1).
+        /// The kind of transaction (e.g. direct = 0, programmable = 1).
         kind: u64,
         /// The status of the transaction.
         status: u64,
@@ -24,6 +24,7 @@ module tonal::transaction {
         rejected: vector<address>,
         /// The addresses that cancelled the transaction.
         cancelled: vector<address>,
+        /// A vector of the bcs encoded transaction actions or instructions.
         payload: vector<vector<u8>>,
         /// Metadata associated with the transaction
         metadata: TransactionMetadata,
@@ -46,10 +47,8 @@ module tonal::transaction {
         display: Option<VecMap<String, String>>
     }
 
-    // const CONFIG_TRANSACTION_KIND: u64 = 0;
+    // const DIRECT_TRANSACTION_KIND: u64 = 0;
     // const PROGRAMMABLE_TRANSACTION_KIND: u64 = 1;
-    // const COINS_TRANSFER_TRANSACTION_KIND: u64 = 2;
-    // const OBJECTS_TRANSFER_TRANSACTION_KIND: u64 = 3;
 
     // const APPROVED_VOTE_KIND: u64 = 0;
     // const REJECTED_VOTE_KIND: u64 = 1;
