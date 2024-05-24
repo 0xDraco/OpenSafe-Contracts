@@ -5,8 +5,7 @@ module tonal::transaction {
     use sui::vec_map::VecMap;
 
     use tonal::utils;
-    use tonal::parser;
-    use tonal::safe::{Self, Safe};
+    use tonal::safe::Safe;
     use tonal::constants::{transaction_status_active, transaction_status_approved};
 
     public struct Transaction has key {
@@ -62,18 +61,12 @@ module tonal::transaction {
     const STATUS_CANCELLED: u64 = 3;
     const STATUS_EXECUTED: u64 = 4;
 
-    const ADD_OWNER_OPERATION: u64 = 0;
-    const REMOVE_OWNER_OPERATION: u64 = 1;
-    const CHANGE_THRESHOLD_OPERATION: u64 = 2;
-    const CHANGE_EXECUTION_DELAY_OPERATION: u64 = 3;
-
     const EEmptyTransactionData: u64 = 1;
-    const EInvalidTransactionData: u64 = 2;
-    const EInvalidTransactionStatus: u64 = 4;
-    const ETransactionIsVoid: u64 = 5;
-    const EAlreadyApprovedTransaction: u64 = 6;
-    const EAlreadyRejectedTransaction: u64 = 7;
-    const EAlreadyCancelledTransaction: u64 = 8;
+    const EInvalidTransactionStatus: u64 = 2;
+    const ETransactionIsVoid: u64 = 3;
+    const EAlreadyApprovedTransaction: u64 = 4;
+    const EAlreadyRejectedTransaction: u64 = 5;
+    const EAlreadyCancelledTransaction: u64 = 6;
 
     // Creates a new Safe transaction.
     public fun create(safe: &mut Safe, kind: u64, payload: vector<vector<u8>>, clock: &Clock, ctx: &mut TxContext): Transaction {
@@ -292,93 +285,5 @@ module tonal::transaction {
         };
 
         option::none()
-    }
-    
-    /// ===== Checks & Validation functions =====
-
-    public fun parse_config_transaction(data: vector<vector<u8>>) {
-        let (mut i, len) = (0, data.length());
-
-        while(i < len) {
-            let (action, value) = parser::parse_data(data[i]);
-
-            if(action == ADD_OWNER_OPERATION || action == REMOVE_OWNER_OPERATION) {
-                parser::parse_address(value);
-            } else if(action == CHANGE_THRESHOLD_OPERATION) {
-                parser::parse_u64(value);
-            } else if(action == CHANGE_EXECUTION_DELAY_OPERATION) {
-                let execution_delay = parser::parse_u64(value);
-                assert!(execution_delay <= safe::max_execution_delay_ms(), EInvalidTransactionData);
-            } else {
-                abort EInvalidTransactionData
-            };
-
-            i = i + 1;
-        }
-    }
-
-    public fun parse_coins_transfer(data: vector<vector<u8>>, only_validate: bool): (vector<vector<u8>>, vector<address>, vector<u64>) {
-        let (mut i, len) = (0, data.length());
-
-        let mut amounts = vector::empty();
-        let mut coin_types = vector::empty();
-        let mut recipients = vector::empty();
-
-        while(i < len) {
-            let (_, value) = parser::parse_data(data[i]);
-            let (amount, recipient, coin_type) = parser::parse_coin_transfer_data(value);
-
-            if(!only_validate) {    
-                amounts.push_back(amount);
-                coin_types.push_back(coin_type);
-                recipients.push_back(recipient);
-            };
-            
-            i = i + 1;
-        };
-
-        (coin_types, recipients, amounts)
-    }
-
-    public fun parse_objects_transfer(data: vector<vector<u8>>, only_validate: bool): (vector<ID>, vector<address>) {
-        let (mut i, len) = (0, data.length());
-
-        let mut object_ids = vector::empty();
-        let mut recipients = vector::empty();
-
-        while(i < len) {
-            let (_, value) = parser::parse_data(data[i]);
-            let (id, recipient) = parser::parse_object_transfer_data(value);
-
-            if(!only_validate) {    
-                recipients.push_back(recipient);
-                object_ids.push_back(object::id_from_address(id));
-            };
-            
-            i = i + 1;
-        };
-
-        (object_ids, recipients)
-    }
-
-    public fun parse_programmable_transaction(data: vector<vector<u8>>, only_validate: bool): (vector<vector<u8>>, vector<vector<u8>>) {
-        let (mut i, len) = (0, data.length());
-
-        let mut inputs = vector::empty();
-        let mut commands = vector::empty();
-
-        while(i < len) {
-            let (_, value) = parser::parse_data(data[i]);
-            let (inps, cmds) = parser::parse_programmable_transaction_data(value);
-
-            if(!only_validate) {
-                inputs.append(inps);
-                commands.append(cmds);
-            };
-            
-            i = i + 1;
-        };
-
-        (inputs, commands)
     }
 }

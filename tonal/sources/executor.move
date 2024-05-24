@@ -4,6 +4,7 @@ module tonal::executor {
     use tonal::parser;
     use tonal::safe::Safe;
     use tonal::transaction::Transaction;
+    use tonal::constants::{transaction_status_approved};
 
     public struct Executor {
         safe: ID,
@@ -22,10 +23,18 @@ module tonal::executor {
     public use fun executable_data as Executable.data;
     public use fun executable_safe as Executable.safe;
 
-    const EExecutionComplete: u64 = 0;
-    const EExecutorTransactionMismatch: u64 = 2;
+    const ETransactionIsVoid: u64 = 0;
+    const ETransactionNotApproved: u64 = 1;
+    const EExecutionDelayNotExpired: u64 = 2;
+    const EExecutionComplete: u64 = 3;
+    const EExecutorTransactionMismatch: u64 = 4;
 
-    public fun new(safe: &Safe, transaction: &Transaction): Executor {
+    public fun begin(safe: &Safe, transaction: &Transaction, clock: &Clock, ctx: &TxContext): Executor {
+        safe.assert_sender_owner(ctx);
+        assert!(!transaction.is_void(safe), ETransactionIsVoid);
+        assert!(transaction.is_execution_delay_expired(safe, clock), EExecutionDelayNotExpired);
+        assert!(transaction.status() == transaction_status_approved(), ETransactionNotApproved);
+
         Executor {
             safe: safe.id(),
             transaction: transaction.id(),
