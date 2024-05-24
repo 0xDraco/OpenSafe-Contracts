@@ -1,14 +1,12 @@
 module opensafe::transaction {
     use std::string::String;
 
-    use sui::bcs;
     use sui::clock::Clock;
     use sui::vec_map::VecMap;
 
     use opensafe::utils;
     use opensafe::parser;
-    use opensafe::storage::Storage;
-    use opensafe::safe::{Self, OwnerCap, Safe};
+    use opensafe::safe::{Self, Safe};
     use opensafe::constants::{transaction_status_active, transaction_status_approved};
 
     public struct Transaction has key {
@@ -27,12 +25,6 @@ module opensafe::transaction {
         rejected: vector<address>,
         /// The addresses that cancelled the transaction.
         cancelled: vector<address>,
-        /// This stores information or actions of the transaction in the BCS format.
-        /// 
-        /// - For config transactions, it stores a list of action data in the BCS format. 
-        /// - Object and coin sending transactions follow the same structure.
-        /// - For programmable transactions, it contains a list of three parts: transaction inputs variables, inputs, and commands.
-        ///   The transaction variables come first in the list, followed by the inputs, and finally, the commands. 
         payload: vector<vector<u8>>,
         /// Metadata associated with the transaction
         metadata: TransactionMetadata,
@@ -55,14 +47,14 @@ module opensafe::transaction {
         display: Option<VecMap<String, String>>
     }
 
-    const CONFIG_TRANSACTION_KIND: u64 = 0;
-    const PROGRAMMABLE_TRANSACTION_KIND: u64 = 1;
-    const COINS_TRANSFER_TRANSACTION_KIND: u64 = 2;
-    const OBJECTS_TRANSFER_TRANSACTION_KIND: u64 = 3;
+    // const CONFIG_TRANSACTION_KIND: u64 = 0;
+    // const PROGRAMMABLE_TRANSACTION_KIND: u64 = 1;
+    // const COINS_TRANSFER_TRANSACTION_KIND: u64 = 2;
+    // const OBJECTS_TRANSFER_TRANSACTION_KIND: u64 = 3;
 
-    const APPROVED_VOTE_KIND: u64 = 0;
-    const REJECTED_VOTE_KIND: u64 = 1;
-    const CANCELLED_VOTE_KIND: u64 = 2;
+    // const APPROVED_VOTE_KIND: u64 = 0;
+    // const REJECTED_VOTE_KIND: u64 = 1;
+    // const CANCELLED_VOTE_KIND: u64 = 2;
 
     const STATUS_ACTIVE: u64 = 0;
     const STATUS_APPROVED: u64 = 1;
@@ -75,10 +67,10 @@ module opensafe::transaction {
     const CHANGE_THRESHOLD_OPERATION: u64 = 2;
     const CHANGE_EXECUTION_DELAY_OPERATION: u64 = 3;
 
-    const EInvalidOwnerCap: u64 = 0;
+    // const EInvalidOwnerCap: u64 = 0;
     const EEmptyTransactionData: u64 = 1;
     const EInvalidTransactionData: u64 = 2;
-    const EInvalidTransactionKind: u64 = 3;
+    // const EInvalidTransactionKind: u64 = 3;
     const EInvalidTransactionStatus: u64 = 4;
     const ETransactionIsInvalidated: u64 = 5;
     const EAlreadyApprovedTransaction: u64 = 6;
@@ -88,21 +80,19 @@ module opensafe::transaction {
     // Creates a new Safe transaction.
     public fun create(
         safe: &mut Safe,
-        owner_cap: &mut OwnerCap,
-        storage: &mut Storage,
         kind: u64,
         payload: vector<vector<u8>>,
         clock: &Clock,
         ctx: &mut TxContext
     ): Transaction {
-        assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
+        safe.assert_sender_owner(ctx);
         assert!(!payload.is_empty(), EEmptyTransactionData);
 
-        validate_payload(payload, kind);
+        // validate_payload(payload, kind);
 
         let metadata = new_metadata(safe.threshold(), ctx.sender(), clock.timestamp_ms());
-        let transaction = new(safe.id(), kind, storage.total_transactions(), payload, metadata, clock.timestamp_ms(), ctx);
-        storage.add_transaction(transaction.id());
+        let transaction = new(safe.id(), kind, 4, payload, metadata, clock.timestamp_ms(), ctx);
+        // safe.add_transaction(transaction.id());
         transaction
     }
 
@@ -151,8 +141,8 @@ module opensafe::transaction {
         self.metadata.display.fill(utils::json_to_vec_map(summary))
     }
 
-    public fun approve(self: &mut Transaction, safe: &Safe, owner_cap: &mut OwnerCap, clock: &Clock, ctx: &TxContext) {
-        assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
+    public fun approve(self: &mut Transaction, safe: &Safe, clock: &Clock, ctx: &TxContext) {
+        safe.assert_sender_owner(ctx);
         assert!(self.status == transaction_status_active(), EInvalidTransactionStatus);
         assert!(!self.is_invalidated(safe), ETransactionIsInvalidated);
 
@@ -162,19 +152,17 @@ module opensafe::transaction {
         let rejected = self.find_rejected(owner);
         if(rejected.is_some()) {
             self.rejected.remove(rejected.destroy_some());
-            safe::decrement_vote_count(owner_cap, REJECTED_VOTE_KIND);
         };
 
         self.approved.push_back(owner);
-        owner_cap.increment_vote_count(APPROVED_VOTE_KIND);
         if(self.approved.length() >= safe.threshold()) {
             self.status = STATUS_APPROVED;
             self.last_status_update_ms = clock.timestamp_ms();
         }
     }
 
-    public fun reject(self: &mut Transaction, safe: &Safe, owner_cap: &mut OwnerCap, clock: &Clock, ctx: &TxContext) {
-        assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
+    public fun reject(self: &mut Transaction, safe: &Safe, clock: &Clock, ctx: &TxContext) {
+        safe.assert_sender_owner(ctx);
         assert!(self.status == transaction_status_active(), EInvalidTransactionStatus);
         assert!(!self.is_invalidated(safe), ETransactionIsInvalidated);
 
@@ -184,26 +172,23 @@ module opensafe::transaction {
         let approved = self.find_approved(owner);
         if(approved.is_some()) {
             self.approved.remove(approved.destroy_some());
-            safe::decrement_vote_count(owner_cap, APPROVED_VOTE_KIND);
         };
 
         self.rejected.push_back(owner);
-        owner_cap.increment_vote_count(REJECTED_VOTE_KIND);
         if(self.rejected.length() >= safe.cutoff()) {
             self.status = STATUS_REJECTED;
             self.last_status_update_ms = clock.timestamp_ms();
         }
     }
 
-    public fun cancel(self: &mut Transaction, safe: &Safe, owner_cap: &mut OwnerCap, clock: &Clock, ctx: &TxContext) {
-        assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
+    public fun cancel(self: &mut Transaction, safe: &Safe, clock: &Clock, ctx: &TxContext) {
+        safe.assert_sender_owner(ctx);
         assert!(self.status == transaction_status_approved(), EInvalidTransactionStatus);
         
         let owner = ctx.sender();
         assert!(!self.find_cancelled(owner).is_some(), EAlreadyCancelledTransaction);
 
         self.cancelled.push_back(owner);
-        owner_cap.increment_vote_count(CANCELLED_VOTE_KIND);
         if(self.cancelled.length() >= safe.threshold()) {
             self.status = STATUS_CANCELLED;
             self.last_status_update_ms = clock.timestamp_ms();
@@ -216,37 +201,19 @@ module opensafe::transaction {
         self.metadata.hash.fill(*ctx.digest());
     }
 
-    public(package) fun execute_config_operation(self: &Transaction, safe: &mut Safe, index: u64, ctx: &mut TxContext): u64 {
-        let (action, value) = parser::parse_data(self.payload[index]);
-        let mut bcs = bcs::new(value);
-
-        if(action == ADD_OWNER_OPERATION) {
-            safe.add_owner(bcs.peel_address(), ctx);
-        } else if(action == REMOVE_OWNER_OPERATION) {
-            safe.remove_owner(bcs.peel_address());
-        } else if(action == CHANGE_THRESHOLD_OPERATION) {
-            safe.set_threshold(bcs.peel_u64());
-        } else if(action == CHANGE_EXECUTION_DELAY_OPERATION) {
-            safe.set_execution_delay_ms(bcs.peel_u64());
-        };
-
-        assert!(bcs.into_remainder_bytes().is_empty(), EInvalidTransactionData);
-        action
-    }
-
-    fun validate_payload(payload: vector<vector<u8>>, kind: u64) {
-        if(kind == CONFIG_TRANSACTION_KIND) { 
-            parse_config_transaction(payload) 
-        } else if(kind == COINS_TRANSFER_TRANSACTION_KIND) {
-            parse_coins_transfer(payload, true);
-        }  else if(kind == OBJECTS_TRANSFER_TRANSACTION_KIND) {
-            parse_objects_transfer(payload, true);
-        } else if(kind == PROGRAMMABLE_TRANSACTION_KIND) {
-            assert!(payload.length() == 2, EInvalidTransactionData);
-        } else {
-            abort EInvalidTransactionKind
-        };
-    }
+    // fun validate_payload(payload: vector<vector<u8>>, kind: u64) {
+    //     if(kind == CONFIG_TRANSACTION_KIND) { 
+    //         parse_config_transaction(payload) 
+    //     } else if(kind == COINS_TRANSFER_TRANSACTION_KIND) {
+    //         parse_coins_transfer(payload, true);
+    //     }  else if(kind == OBJECTS_TRANSFER_TRANSACTION_KIND) {
+    //         parse_objects_transfer(payload, true);
+    //     } else if(kind == PROGRAMMABLE_TRANSACTION_KIND) {
+    //         assert!(payload.length() == 2, EInvalidTransactionData);
+    //     } else {
+    //         abort EInvalidTransactionKind
+    //     };
+    // }
 
     /// ===== Getter functions =====
 

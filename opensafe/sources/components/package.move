@@ -7,9 +7,8 @@ module opensafe::package_management {
     use sui::dynamic_field as field;
     use sui::package::{UpgradeCap, UpgradeTicket, UpgradeReceipt};
 
-    use opensafe::storage::Storage;
+    use opensafe::safe::Safe;
     use opensafe::executor::Executable;
-    use opensafe::safe::{Safe, OwnerCap};
     use opensafe::transaction::{Self, Transaction};
 
     public struct Package has key {
@@ -50,8 +49,6 @@ module opensafe::package_management {
 
     public fun upgrade(
         safe: &mut Safe,
-        owner: &mut OwnerCap,
-        storage: &mut Storage,
         digest: vector<u8>,
         dependencies: vector<ID>,
         modules: vector<vector<u8>>,
@@ -63,7 +60,7 @@ module opensafe::package_management {
         assert!(!field::exists_(safe.uid_inner(), PayloadKey {}), EUpgradeCurrentlyInProgress);
 
         let data = vector::singleton(bcs::to_bytes(&(package.id.to_inner())));
-        let transaction = transaction::create(safe, owner, storage, 0, data, clock, ctx);
+        let transaction = transaction::create(safe, 0, data, clock, ctx);
         let payload = UpgradePayload { digest, modules, dependencies };
 
         field::add(safe.uid_mut_inner(), PayloadKey {}, payload);
