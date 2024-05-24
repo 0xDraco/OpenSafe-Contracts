@@ -1,4 +1,4 @@
-module opensafe::constants {
+module tonal::constants {
     
     const MANAGEMENT_TRANSACTION_KIND: u64 = 0;
     const PROGRAMMABLE_TRANSACTION_KIND: u64 = 1;

@@ -1,4 +1,4 @@
-module opensafe::safe {
+module tonal::safe {
     use std::ascii;
     use std::string::String;
 

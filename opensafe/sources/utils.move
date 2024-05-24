@@ -1,4 +1,4 @@
-module opensafe::utils {
+module tonal::utils {
     use std::type_name;
     use std::string::{String, utf8};
 

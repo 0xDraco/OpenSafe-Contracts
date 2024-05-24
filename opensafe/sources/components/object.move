@@ -1,9 +1,9 @@
-module opensafe::object {
+module tonal::object {
     use sui::bcs;
     use sui::transfer::Receiving;
 
-    use opensafe::safe::Safe;
-    use opensafe::executor::Executable;
+    use tonal::safe::Safe;
+    use tonal::executor::Executable;
 
     const TRANSFER_OBJECT_KIND: u64 = 0;
     const SHARE_OBJECT_KIND: u64 = 0;

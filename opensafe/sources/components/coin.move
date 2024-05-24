@@ -1,11 +1,11 @@
-module opensafe::send_coin {
+module tonal::send_coin {
     use sui::bcs;
     use sui::coin::Coin;
     use sui::transfer::Receiving;
 
-    use opensafe::utils;
-    use opensafe::safe::Safe;
-    use opensafe::executor::Executable;
+    use tonal::utils;
+    use tonal::safe::Safe;
+    use tonal::executor::Executable;
 
     const COIN_TRANSFER_KIND: u64 = 0;
 

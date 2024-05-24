@@ -1,4 +1,4 @@
-module opensafe::package_management {
+module tonal::package_management {
     use std::string::String;
 
     use sui::bcs;
@@ -7,9 +7,9 @@ module opensafe::package_management {
     use sui::dynamic_field as field;
     use sui::package::{UpgradeCap, UpgradeTicket, UpgradeReceipt};
 
-    use opensafe::safe::Safe;
-    use opensafe::executor::Executable;
-    use opensafe::transaction::{Self, Transaction};
+    use tonal::safe::Safe;
+    use tonal::executor::Executable;
+    use tonal::transaction::{Self, Transaction};
 
     public struct Package has key {
         id: UID,

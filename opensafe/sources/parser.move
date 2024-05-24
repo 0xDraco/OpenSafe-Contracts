@@ -1,4 +1,4 @@
-module opensafe::parser {
+module tonal::parser {
     use sui::bcs;
 
     const EDataParseFailure: u64 = 1;

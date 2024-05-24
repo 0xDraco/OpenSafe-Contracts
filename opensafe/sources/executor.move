@@ -1,9 +1,9 @@
-module opensafe::executor {
+module tonal::executor {
     use sui::clock::Clock;
 
-    use opensafe::parser;
-    use opensafe::safe::Safe;
-    use opensafe::transaction::Transaction;
+    use tonal::parser;
+    use tonal::safe::Safe;
+    use tonal::transaction::Transaction;
 
     public struct Executor {
         safe: ID,

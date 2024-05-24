@@ -1,12 +1,12 @@
-module opensafe::validator {
+module tonal::validator {
     use sui::bcs;
     use sui::transfer::Receiving;
 
     use sui_system::sui_system::SuiSystemState;
     use sui_system::validator_cap::UnverifiedValidatorOperationCap;
 
-    use opensafe::safe::Safe;
-    use opensafe::executor::Executable;
+    use tonal::safe::Safe;
+    use tonal::executor::Executable;
 
     const SET_GAS_PRICE: u64 = 0;
     const REPORT_VALIDATOR: u64 = 1;

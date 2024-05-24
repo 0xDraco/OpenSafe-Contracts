@@ -1,7 +1,7 @@
-module opensafe::ownership {
+module tonal::ownership {
     use sui::transfer::Receiving;
 
-    use opensafe::safe::Safe;
+    use tonal::safe::Safe;
 
     /// A struct that stores the objects that are withdrawable from a safe.
     public struct Withdrawable has store {

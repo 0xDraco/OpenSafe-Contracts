@@ -1,12 +1,12 @@
-module opensafe::move_call {
+module tonal::move_call {
     // use std::string::String;
 
     use sui::bcs;
 
-    use opensafe::safe::Safe;
-    use opensafe::executor::Executable;
-    use opensafe::utils::addresses_to_ids;
-    use opensafe::ownership::{Self, Borrowable, Withdrawable};
+    use tonal::safe::Safe;
+    use tonal::executor::Executable;
+    use tonal::utils::addresses_to_ids;
+    use tonal::ownership::{Self, Borrowable, Withdrawable};
 
     // public struct MoveCall {
     //     function: String,

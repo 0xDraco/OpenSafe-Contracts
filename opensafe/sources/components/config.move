@@ -1,8 +1,8 @@
-module opensafe::management {
+module tonal::management {
     use sui::bcs;
 
-    use opensafe::safe::Safe;
-    use opensafe::executor::Executable;
+    use tonal::safe::Safe;
+    use tonal::executor::Executable;
 
     const ADD_USER_KIND: u64 = 0;
     const REMOVE_USER_KIND: u64 = 1;

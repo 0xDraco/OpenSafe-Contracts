@@ -1,13 +1,13 @@
-module opensafe::transaction {
+module tonal::transaction {
     use std::string::String;
 
     use sui::clock::Clock;
     use sui::vec_map::VecMap;
 
-    use opensafe::utils;
-    use opensafe::parser;
-    use opensafe::safe::{Self, Safe};
-    use opensafe::constants::{transaction_status_active, transaction_status_approved};
+    use tonal::utils;
+    use tonal::parser;
+    use tonal::safe::{Self, Safe};
+    use tonal::constants::{transaction_status_active, transaction_status_approved};
 
     public struct Transaction has key {
         id: UID,
