@@ -34,10 +34,10 @@ module opensafe::transaction {
         /// - For programmable transactions, it contains a list of three parts: transaction inputs variables, inputs, and commands.
         ///   The transaction variables come first in the list, followed by the inputs, and finally, the commands. 
         payload: vector<vector<u8>>,
-        /// The timestamp when the status was last updated.
-        last_status_update_ms: u64,
         /// Metadata associated with the transaction
-        metadata: TransactionMetadata
+        metadata: TransactionMetadata,
+        /// The timestamp when the status was last updated.
+        last_status_update_ms: u64
     }
 
     /// This stores extra metadata associated with the transaction. 
@@ -51,7 +51,8 @@ module opensafe::transaction {
         hash: Option<vector<u8>>,
         /// Timestamp when transaction was created
         created_at_ms: u64,
-        summary: Option<VecMap<String, String>>
+        /// Optional key-value pairs that can be used to display information about the transaction.
+        display: Option<VecMap<String, String>>
     }
 
     const CONFIG_TRANSACTION_KIND: u64 = 0;
@@ -84,36 +85,59 @@ module opensafe::transaction {
     const EAlreadyRejectedTransaction: u64 = 7;
     const EAlreadyCancelledTransaction: u64 = 8;
 
-    public fun new(safe: &mut Safe, owner_cap: &mut OwnerCap, storage: &mut Storage, kind: u64, payload: vector<vector<u8>>, clock: &Clock, ctx: &mut TxContext): Transaction {
+    // Creates a new Safe transaction.
+    public fun create(
+        safe: &mut Safe,
+        owner_cap: &mut OwnerCap,
+        storage: &mut Storage,
+        kind: u64,
+        payload: vector<vector<u8>>,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ): Transaction {
         assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
         assert!(!payload.is_empty(), EEmptyTransactionData);
 
         validate_payload(payload, kind);
-        let metadata = new_metadata(safe.threshold(), ctx.sender(), clock.timestamp_ms());
-        let transaction = Transaction {
-            id: object::new(ctx),
-            kind,
-            payload,
-            metadata,
-            safe: safe.id(),
-            status: STATUS_ACTIVE,
-            approved: vector::empty(),
-            rejected: vector::empty(),
-            cancelled: vector::empty(),
-            sequence_number: storage.total_transactions(),
-            last_status_update_ms: clock.timestamp_ms(),
-        };
 
+        let metadata = new_metadata(safe.threshold(), ctx.sender(), clock.timestamp_ms());
+        let transaction = new(safe.id(), kind, storage.total_transactions(), payload, metadata, clock.timestamp_ms(), ctx);
         storage.add_transaction(transaction.id());
         transaction
     }
 
+    // Initializes a new transaction object
+    fun new(
+        safe: ID,
+        kind: u64,
+        sequence_number: u64,
+        payload: vector<vector<u8>>,
+        metadata: TransactionMetadata,
+        timestamp_ms: u64,
+        ctx: &mut TxContext,
+    ): Transaction {
+        Transaction {
+            id: object::new(ctx),
+            safe,
+            kind,
+            payload,
+            metadata,
+            sequence_number,
+            status: STATUS_ACTIVE,
+            approved: vector::empty(),
+            rejected: vector::empty(),
+            cancelled: vector::empty(),
+            last_status_update_ms: timestamp_ms,
+        }
+    }
+
+    // Initializes a new transaction metadata struct
     fun new_metadata(threshold: u64, creator: address, timestamp_ms: u64): TransactionMetadata {
         TransactionMetadata {
             creator,
             threshold,
             hash: option::none(),
-            summary: option::none(),
+            display: option::none(),
             created_at_ms: timestamp_ms,
         }
     }
@@ -124,16 +148,10 @@ module opensafe::transaction {
     }
 
     public fun add_summary_metadata(self: &mut Transaction, summary: vector<u8>) {
-        self.metadata.summary.fill(utils::json_to_vec_map(summary))
+        self.metadata.display.fill(utils::json_to_vec_map(summary))
     }
 
-    public fun approve(
-        self: &mut Transaction,
-        safe: &Safe,
-        owner_cap: &mut OwnerCap,
-        clock: &Clock,
-        ctx: &TxContext
-    ) {
+    public fun approve(self: &mut Transaction, safe: &Safe, owner_cap: &mut OwnerCap, clock: &Clock, ctx: &TxContext) {
         assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
         assert!(self.status == transaction_status_active(), EInvalidTransactionStatus);
         assert!(!self.is_invalidated(safe), ETransactionIsInvalidated);
@@ -148,20 +166,14 @@ module opensafe::transaction {
         };
 
         self.approved.push_back(owner);
-        safe::increment_vote_count(owner_cap, APPROVED_VOTE_KIND);
+        owner_cap.increment_vote_count(APPROVED_VOTE_KIND);
         if(self.approved.length() >= safe.threshold()) {
             self.status = STATUS_APPROVED;
             self.last_status_update_ms = clock.timestamp_ms();
         }
     }
 
-    public fun reject(
-        self: &mut Transaction,
-        safe: &Safe,
-        owner_cap: &mut OwnerCap,
-        clock: &Clock,
-        ctx: &TxContext
-    ) {
+    public fun reject(self: &mut Transaction, safe: &Safe, owner_cap: &mut OwnerCap, clock: &Clock, ctx: &TxContext) {
         assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
         assert!(self.status == transaction_status_active(), EInvalidTransactionStatus);
         assert!(!self.is_invalidated(safe), ETransactionIsInvalidated);
@@ -176,20 +188,14 @@ module opensafe::transaction {
         };
 
         self.rejected.push_back(owner);
-        safe::increment_vote_count(owner_cap, REJECTED_VOTE_KIND);
+        owner_cap.increment_vote_count(REJECTED_VOTE_KIND);
         if(self.rejected.length() >= safe.cutoff()) {
             self.status = STATUS_REJECTED;
             self.last_status_update_ms = clock.timestamp_ms();
         }
     }
 
-    public fun cancel(
-        self: &mut Transaction,
-        safe: &Safe,
-        owner_cap: &mut OwnerCap,
-        clock: &Clock,
-        ctx: &TxContext
-    ) {
+    public fun cancel(self: &mut Transaction, safe: &Safe, owner_cap: &mut OwnerCap, clock: &Clock, ctx: &TxContext) {
         assert!(safe.is_valid_owner_cap(owner_cap, ctx), EInvalidOwnerCap);
         assert!(self.status == transaction_status_approved(), EInvalidTransactionStatus);
         
@@ -197,7 +203,7 @@ module opensafe::transaction {
         assert!(!self.find_cancelled(owner).is_some(), EAlreadyCancelledTransaction);
 
         self.cancelled.push_back(owner);
-        safe::increment_vote_count(owner_cap, CANCELLED_VOTE_KIND);
+        owner_cap.increment_vote_count(CANCELLED_VOTE_KIND);
         if(self.cancelled.length() >= safe.threshold()) {
             self.status = STATUS_CANCELLED;
             self.last_status_update_ms = clock.timestamp_ms();
