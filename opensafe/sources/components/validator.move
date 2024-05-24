@@ -21,7 +21,7 @@ module opensafe::validator {
         let mut bcs = bcs::new(data);
 
         if(kind == SET_GAS_PRICE){
-            sui_state.request_set_gas_price(&validator_cap, bcs.peel_u64());
+            sui_state.request_set_gas_price(&validator_cap, bcs.peel_u64())
         } else if(kind == REPORT_VALIDATOR) {
             sui_state.report_validator(&validator_cap, bcs.peel_address()) 
         } else if(kind == UNDO_REPORT_VALIDATOR) {

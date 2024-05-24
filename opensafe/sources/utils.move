@@ -36,4 +36,15 @@ module opensafe::utils {
 
         map
    }
+
+   public fun addresses_to_ids(addresses: vector<address>): vector<ID> {
+        let (mut i, mut ids) = (0, vector::empty());
+
+        while(i < ids.length()) {
+            ids.push_back(addresses[i].to_id());
+            i = i + 1;
+        };
+
+        ids
+   } 
 }
