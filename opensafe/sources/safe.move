@@ -258,6 +258,10 @@ module opensafe::safe {
         MAX_EXECUTION_DELAY_MS
     }
 
+    public fun to_address(self: &Safe): address {
+        self.id.to_address()
+    }
+
     // ===== Assertions & Validations =====
 
     public fun validate_owner_cap(self: &Safe, owner_cap: &OwnerCap, ctx: &TxContext) {

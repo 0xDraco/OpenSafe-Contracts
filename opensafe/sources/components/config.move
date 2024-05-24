@@ -4,20 +4,27 @@ module opensafe::management {
     use opensafe::safe::Safe;
     use opensafe::executor::Executable;
 
+    const ADD_USER_KIND: u64 = 0;
+    const REMOVE_USER_KIND: u64 = 1;
+    const SET_THRESHOLD_KIND: u64 = 2;
+    const SET_EXECUTION_DELAY_KIND: u64 = 3;
+
+    const EInvalidActionKind: u64 = 0;
+
     public fun execute(safe: &mut Safe, executable: Executable, ctx: &mut TxContext) {
         let (kind, data) = executable.destroy(safe);
         let mut bcs = bcs::new(data);
 
-        if(kind == 0) {
+        if(kind == ADD_USER_KIND) {
             safe.add_owner(bcs.peel_address(), ctx);
-        } else if(kind == 1) {
+        } else if(kind == REMOVE_USER_KIND) {
             safe.remove_owner(bcs.peel_address());
-        } else if(kind == 2) {
+        } else if(kind == SET_THRESHOLD_KIND) {
             safe.set_threshold(bcs.peel_u64());
-        } else if(kind == 3) {
+        } else if(kind == SET_EXECUTION_DELAY_KIND) {
             safe.set_execution_delay_ms(bcs.peel_u64());
         } else {
-            abort 0
+            abort EInvalidActionKind
         };
 
         assert!(bcs.into_remainder_bytes().is_empty(), 1);
