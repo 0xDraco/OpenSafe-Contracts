@@ -1,6 +1,4 @@
-module tonal::move_call {
-    // use std::string::String;
-
+module tonal::ptb {
     use sui::bcs;
 
     use tonal::safe::Safe;
@@ -8,20 +6,13 @@ module tonal::move_call {
     use tonal::utils::addresses_to_ids;
     use tonal::ownership::{Self, Borrowable, Withdrawable};
 
-    // public struct MoveCall {
-    //     function: String,
-    //     arguments: vector<vector<u8>>,
-    //     type_arguments: vector<String>
-    // }
-
-    // public struct SplitCoins {
-    //     source: vector<u8>,
-    //     amounts: vector<vector<u8>>
-    // }
-
-    public fun execute(safe: &mut Safe, executable: Executable): (Borrowable, Withdrawable) {
+    const EPTBTransactionDigestMismatch: u64 = 0;
+ 
+    public fun execute(safe: &mut Safe, digest: vector<u8>, executable: Executable): (Borrowable, Withdrawable) {
         let (_kind, data) = executable.destroy(safe);
         let mut bcs = bcs::new(data);
+        
+        assert!(bcs.peel_vec_u8() == digest, EPTBTransactionDigestMismatch);
 
         let borrowable = bcs.peel_vec_address();
         let withdrawable = bcs.peel_vec_address();
