@@ -3,35 +3,24 @@ module tonal::ownership {
 
     use tonal::safe::Safe;
 
-    /// A struct that stores the objects that are withdrawable from a safe.
-    public struct Withdrawable has store {
-        /// The objects to be withdrawn.
+    /// A struct that stores the objects that are removable from a safe.
+    public struct Removable has store {
         objects: vector<ID>
     }
 
     /// A struct that stores the objects that are borrowable from a safe.
     public struct Borrowable has store {
-        /// The objects to be borrowed.
         objects: vector<ID>,
-        /// The objects that have been borrowed
         borrowed: vector<ID>
     }
 
-    public struct WrappedObject<T: key + store> {
-        inner: T
-    }
-
-    // public use fun unwrap as WrappedObject.pop_back;
-
-    const EObjectNotWithdrawable: u64 = 0;
+    const EObjectNotRemovable: u64 = 0;
     const EObjectNotBorrowable: u64 = 1;
     const EInvalidBorrowedObject: u64 = 2;
-    const ENonEmptyWithdrawableObjects: u64 = 3;
-    const ENonEmptyBorrowableObjects: u64 = 4;
-    const EBorrowedObjectsNotReturned: u64 = 5;
+    const EBorrowedObjectsNotReturned: u64 = 4;
 
-    public(package) fun new_withdrawable(objects: vector<ID>): Withdrawable {
-        Withdrawable { objects }
+    public(package) fun new_removable(objects: vector<ID>): Removable {
+        Removable { objects }
     }
 
     public(package) fun new_borrowable(objects: vector<ID>): Borrowable {
@@ -41,25 +30,20 @@ module tonal::ownership {
         }
     }
 
-    public(package) fun wrap<T: key + store>(object: T): WrappedObject<T> {
-        WrappedObject { inner: object }
-    }
-
     public fun put_back<T: key + store>(safe: &mut Safe, borrowable: &mut Borrowable, object: T) {
         let (found, i) = borrowable.borrowed.index_of(&object::id(&object));
         assert!(found, EInvalidBorrowedObject);
-
         borrowable.borrowed.remove(i);
+
         transfer::public_transfer(object, safe.get_address());
     }
     
-    public fun withdraw<T: key + store>(safe: &mut Safe, withdrawable: &mut Withdrawable, receiving: Receiving<T>): T {
+    public fun withdraw<T: key + store>(safe: &mut Safe, removable: &mut Removable, receiving: Receiving<T>): T {
         let object = transfer::public_receive(safe.uid_mut_inner(), receiving);
-        let (found, i) = withdrawable.objects.index_of(&object::id(&object));
+        let (found, i) = removable.objects.index_of(&object::id(&object));
 
-        assert!(found, EObjectNotWithdrawable);
-        withdrawable.objects.remove(i);
-
+        assert!(found, EObjectNotRemovable);
+        removable.objects.remove(i);
         object
     }
 
@@ -73,19 +57,12 @@ module tonal::ownership {
         object
     }
 
-    public fun destroy_empty_withdrawable(withdrawable: Withdrawable) {
-        let Withdrawable { objects } = withdrawable;
-        assert!(objects.is_empty(), ENonEmptyWithdrawableObjects);
+    public fun destroy_removable(removable: Removable) {
+        let Removable { objects: _ } = removable;
     }
 
-    public fun destroy_empty_borrowable(borrowable: Borrowable) {
-        let Borrowable { objects, borrowed } = borrowable;
-        assert!(objects.is_empty(), ENonEmptyBorrowableObjects);
+    public fun destroy_borrowable(borrowable: Borrowable) {
+        let Borrowable { objects: _, borrowed } = borrowable;
         assert!(borrowed.is_empty(), EBorrowedObjectsNotReturned);
-    }
-
-    public(package) fun unwrap<T: key + store>(wrapped: WrappedObject<T>): T {
-        let WrappedObject { inner } = wrapped;
-        inner
     }
 }
