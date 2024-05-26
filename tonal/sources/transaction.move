@@ -72,8 +72,6 @@ module tonal::transaction {
         safe.assert_sender_owner(ctx);
         assert!(!payload.is_empty(), EEmptyTransactionData);
 
-        // validate_payload(payload, kind);
-
         let metadata = new_metadata(safe.threshold(), ctx.sender(), clock.timestamp_ms());
         let transaction = new(safe.id(), kind, safe.transactions_count(), payload, metadata, clock.timestamp_ms(), ctx);
         safe.add_transaction(transaction.id());
@@ -131,6 +129,11 @@ module tonal::transaction {
         safe.lock_transaction_objects(self.sequence_number, objects)
     }
 
+    public fun unlock_transaction_objects(self: &Transaction, safe: &mut Safe, ctx: &mut TxContext) {
+        safe.assert_sender_owner(ctx);
+        safe.unlock_transaction_objects(self.sequence_number)
+    }
+ 
     public fun approve(self: &mut Transaction, safe: &Safe, clock: &Clock, ctx: &TxContext) {
         safe.assert_sender_owner(ctx);
         assert!(!self.is_stale(safe), ETransactionIsVoid);

@@ -13,7 +13,7 @@ module tonal::transfer {
 
     const EObjectIDMismatch: u64 = 0;
     const EInvalidActionKind: u64 = 1;
-    const ERecipientsAmountLengthMismatch: u64 = 0;
+    const ERecipientsObjectsLengthMismatch: u64 = 0;
 
     #[allow(lint(share_owned))]
     public fun execute<T: key + store>(safe: &mut Safe, executable: Executable, receiving: Receiving<T>) {
@@ -42,23 +42,27 @@ module tonal::transfer {
         execute(safe, executables.pop_back(), receiving);
     }
 
-    public fun prepare_coins_transfer<T>(safe: &mut Safe, mut receivings: vector<Receiving<Coin<T>>>, recipients: vector<address>, amounts: vector<u64>, ctx: &mut TxContext): vector<vector<u8>> {
+    public fun prepare_coins<T>(safe: &mut Safe, mut receivings: vector<Receiving<Coin<T>>>, amounts: vector<u64>, ctx: &mut TxContext): vector<ID> {
         safe.assert_sender_owner(ctx);
-        assert!(recipients.length() == amounts.length(), ERecipientsAmountLengthMismatch);
 
-        let coin_ids;
+        let coins;
         let receiving = receivings.pop_back();
         if(!receivings.is_empty()) {
             let coin = coin::merge_and_return_coin(safe, receiving, receivings, ctx);
-            coin_ids = coin::split_from_coin(safe, coin, amounts, ctx);
+            coins = coin::split_from_coin(safe, coin, amounts, ctx);
         } else {
-            coin_ids = coin::split(safe, receiving, amounts, ctx);
+            coins = coin::split(safe, receiving, amounts, ctx);
         };
 
+        coins
+    }
+
+    public fun build_objects_transfer(objects: vector<ID>, recipients: vector<address>): vector<vector<u8>> {
+        assert!(recipients.length() == objects.length(), ERecipientsObjectsLengthMismatch);
         let (mut i, mut transfers) = (0, vector::empty());
-        while(i < coin_ids.length()) {
+        while(i < objects.length()) {
             let mut bytes = vector::empty();
-            bytes.append(bcs::to_bytes(&coin_ids[i]));
+            bytes.append(bcs::to_bytes(&objects[i]));
             bytes.append(bcs::to_bytes(&recipients[i]));
 
             transfers.push_back(bytes);

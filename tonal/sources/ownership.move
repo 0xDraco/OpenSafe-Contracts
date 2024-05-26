@@ -3,13 +3,17 @@ module tonal::ownership {
 
     use tonal::safe::Safe;
 
-    /// A struct that stores the objects that are removable from a safe.
-    public struct Removable has store {
+    /// This holds the IDs of the objects that are removable from a safe.
+    /// The presence of an object's ID here does not necessarily mean that the object will or must be removed from the safe.
+    public struct Removable has drop {
         objects: vector<ID>
     }
 
-    /// A struct that stores the objects that are borrowable from a safe.
-    public struct Borrowable has store {
+    /// This holds the IDs of the objects that are borrowable from a safe, and the IDs of the objects that are currently borrowed.
+    /// The presence of an object's ID in the `objects` field indicates that the object is available for borrowing.
+    /// The presence of an object's ID in the `borrowed` field indicates that the object is currently borrowed, 
+    /// and that it is no longer available for borrowing.
+    public struct Borrowable {
         objects: vector<ID>,
         borrowed: vector<ID>
     }
@@ -31,8 +35,8 @@ module tonal::ownership {
     }
 
     public fun put_back<T: key + store>(safe: &mut Safe, borrowable: &mut Borrowable, object: T) {
-        let (found, i) = borrowable.borrowed.index_of(&object::id(&object));
-        assert!(found, EInvalidBorrowedObject);
+        let (was_borrowed, i) = borrowable.borrowed.index_of(&object::id(&object));
+        assert!(was_borrowed, EInvalidBorrowedObject);
         borrowable.borrowed.remove(i);
 
         transfer::public_transfer(object, safe.get_address());
@@ -40,25 +44,21 @@ module tonal::ownership {
     
     public fun withdraw<T: key + store>(safe: &mut Safe, removable: &mut Removable, receiving: Receiving<T>): T {
         let object = transfer::public_receive(safe.uid_mut_inner(), receiving);
-        let (found, i) = removable.objects.index_of(&object::id(&object));
+        let (is_removable, i) = removable.objects.index_of(&object::id(&object));
 
-        assert!(found, EObjectNotRemovable);
+        assert!(is_removable, EObjectNotRemovable);
         removable.objects.remove(i);
         object
     }
 
     public fun borrow<T: key + store>(safe: &mut Safe, borrowable: &mut Borrowable, receiving: Receiving<T>): T {
         let object = transfer::public_receive(safe.uid_mut_inner(), receiving);
-        let (found, i) = borrowable.objects.index_of(&object::id(&object));
+        let (is_borrowable, i) = borrowable.objects.index_of(&object::id(&object));
 
-        assert!(found, EObjectNotBorrowable);
+        assert!(is_borrowable, EObjectNotBorrowable);
         borrowable.borrowed.push_back(borrowable.objects.remove(i));
 
         object
-    }
-
-    public fun destroy_removable(removable: Removable) {
-        let Removable { objects: _ } = removable;
     }
 
     public fun destroy_borrowable(borrowable: Borrowable) {
