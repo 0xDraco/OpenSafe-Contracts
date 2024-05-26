@@ -28,6 +28,7 @@ module tonal::package_management {
     public struct PayloadKey has copy, store, drop {}
 
     const PACKAGE_UPGRADE_KIND: u64 = 8;
+    // const POLICY_CHANGE_KIND: u64 = 9;
 
     const EInvalidActionKind: u64 = 0;
     const EUpgradePackageMismatch: u64 = 1;
