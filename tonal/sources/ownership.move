@@ -17,6 +17,12 @@ module tonal::ownership {
         borrowed: vector<ID>
     }
 
+    public struct WrappedObject<T: key + store> {
+        inner: T
+    }
+
+    // public use fun unwrap as WrappedObject.pop_back;
+
     const EObjectNotWithdrawable: u64 = 0;
     const EObjectNotBorrowable: u64 = 1;
     const EInvalidBorrowedObject: u64 = 2;
@@ -33,6 +39,10 @@ module tonal::ownership {
             objects,
             borrowed: vector::empty()
         }
+    }
+
+    public(package) fun wrap<T: key + store>(object: T): WrappedObject<T> {
+        WrappedObject { inner: object }
     }
 
     public fun put_back<T: key + store>(safe: &mut Safe, borrowable: &mut Borrowable, object: T) {
@@ -72,5 +82,10 @@ module tonal::ownership {
         let Borrowable { objects, borrowed } = borrowable;
         assert!(objects.is_empty(), ENonEmptyBorrowableObjects);
         assert!(borrowed.is_empty(), EBorrowedObjectsNotReturned);
+    }
+
+    public(package) fun unwrap<T: key + store>(wrapped: WrappedObject<T>): T {
+        let WrappedObject { inner } = wrapped;
+        inner
     }
 }
