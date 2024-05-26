@@ -121,8 +121,14 @@ module tonal::transaction {
         transfer::share_object(self);
     }
 
-    public fun add_summary_metadata(self: &mut Transaction, summary: vector<u8>) {
-        self.metadata.display.fill(utils::json_to_vec_map(summary))
+    public fun display_metadata(self: &mut Transaction, safe: &Safe, display: vector<u8>, ctx: &mut TxContext) {
+        safe.assert_sender_owner(ctx);
+        self.metadata.display.fill(utils::json_to_vec_map(display))
+    }
+
+    public fun lock_transaction_objects(self: &Transaction, safe: &mut Safe, objects: vector<ID>, ctx: &mut TxContext) {
+        safe.assert_sender_owner(ctx);
+        safe.lock_transaction_objects(self.sequence_number, objects)
     }
 
     public fun approve(self: &mut Transaction, safe: &Safe, clock: &Clock, ctx: &TxContext) {
