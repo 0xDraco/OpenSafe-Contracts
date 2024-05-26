@@ -2,8 +2,11 @@ module tonal::safe {
     use std::ascii;
     use std::string::String;
 
+    use sui::math;
     use sui::clock::Clock;
     use sui::url::{Self, Url};
+    use sui::table::{Self, Table};
+    use sui::vec_map::{Self, VecMap};
     use sui::table_vec::{Self, TableVec};
 
     public struct Safe has key {
@@ -12,13 +15,16 @@ module tonal::safe {
         /// The minimum amount of time that must pass before a transaction is allowed to be executed.
         execution_delay_ms: u64,
         /// The sequence number of the last voided transaction.
-        last_void_transaction: u64,
+        last_stale_transaction: u64,
         /// A vector storing the owners of the safe.
         owners: vector<address>,
         /// Stores safe metadata like name, description, logo_url etc.
         metadata: SafeMetadata,
         /// A `TableVec` storing the the IDs of the safe transactions.
-        transactions: TableVec<ID>
+        transactions: TableVec<ID>,
+        /// This stores objects that are to be used in created transactions.
+        /// This is used to help us avoid using objects that were created or used as input in another safe transction 
+        objects_lock_map: ObjectsLockMap
     }
 
     public struct SafeMetadata has store {
@@ -32,6 +38,11 @@ module tonal::safe {
         created_at_ms: u64
     }
 
+    public struct ObjectsLockMap has store {
+        object_transaction: Table<ID, u64>,
+        transaction_objects: Table<u64, vector<ID>>
+    }
+
     const MAX_EXECUTION_DELAY_MS: u64 = 3 * 24 * 60 * 60 * 1000; // 3 days
 
     const EOwnersCannotBeEmpty: u64 = 0;
@@ -41,6 +52,11 @@ module tonal::safe {
     const ENotSafeOwner: u64 = 4;
     const EExecutionDelayOutOfRange: u64 = 5;
     const EInvalidOwnerCap: u64 = 6;
+    const EInvalidTransactionOffset: u64 = 7;
+    const ETransactionLocksDuplicate: u64 = 8;
+    const EObjectIsLocked: u64 = 9;
+    const ETransactionLockNotFound: u64 = 10;
+    const ELockedTransactionObjectMismatch: u64 = 11;
 
     // ===== Public functions =====
 
@@ -57,8 +73,9 @@ module tonal::safe {
             threshold,
             execution_delay_ms: 0,
             owners: vector::empty(),
-            last_void_transaction: 0,
-            transactions: table_vec::empty(ctx)
+            last_stale_transaction: 0,
+            transactions: table_vec::empty(ctx),
+            objects_lock_map: new_objects_lock_map(ctx)
         };
 
         let (mut i, len) = (0, owners.length());
@@ -75,7 +92,6 @@ module tonal::safe {
     public fun share(self: Safe) {
         transfer::share_object(self);
     }
-
 
     public fun update_name(self: &mut Safe, name: String, ctx: &mut TxContext) {
         self.assert_sender_owner(ctx);
@@ -108,6 +124,13 @@ module tonal::safe {
         }
     }
 
+    public fun new_objects_lock_map(ctx: &mut TxContext): ObjectsLockMap {
+        ObjectsLockMap {
+            object_transaction: table::new(ctx),
+            transaction_objects: table::new(ctx)
+        }
+    }
+
 
     // ===== Package functions =====
 
@@ -136,8 +159,8 @@ module tonal::safe {
         self.execution_delay_ms = execution_delay_ms;
     }
 
-    public(package) fun set_last_void_transaction(self: &mut Safe, sequence_number: u64) {
-        self.last_void_transaction = sequence_number;
+    public(package) fun set_last_stale_transaction(self: &mut Safe, sequence_number: u64) {
+        self.last_stale_transaction = sequence_number;
     }
 
     public(package) fun add_transaction(self: &mut Safe, id: ID) {
@@ -150,6 +173,35 @@ module tonal::safe {
 
     public(package) fun uid_inner(self: &Safe): &UID {
         &self.id
+    }
+
+    public(package) fun lock_transaction_objects(self: &mut Safe, transaction: u64, objects: vector<ID>) {
+        assert!(!self.objects_lock_map.transaction_objects.contains(transaction), ETransactionLocksDuplicate);
+        self.objects_lock_map.transaction_objects.add(transaction, objects);
+
+        let mut i = 0;
+        while(i <  objects.length()) {
+            let object = objects.pop_back();
+            if(self.objects_lock_map.object_transaction.contains(object)) {
+                let transaction = self.objects_lock_map.object_transaction[object];
+                assert!(transaction <= self.last_stale_transaction, EObjectIsLocked);
+
+                self.objects_lock_map.object_transaction.remove(object);
+            };
+
+            self.objects_lock_map.object_transaction.add(object, transaction);
+            i = i + 1;
+        };
+    }
+
+    public(package) fun unlock_transaction_objects(self: &mut Safe, transaction: u64) {
+        assert!(self.objects_lock_map.transaction_objects.contains(transaction), ETransactionLockNotFound);
+        let mut objects = self.objects_lock_map.transaction_objects.remove(transaction);
+
+        while(!objects.is_empty()) {
+            let object = objects.pop_back();
+            assert!(transaction == self.objects_lock_map.object_transaction.remove(object), ELockedTransactionObjectMismatch);
+        }
     }
 
     // ===== getter functions =====
@@ -186,8 +238,8 @@ module tonal::safe {
         self.transactions.length()
     }
 
-    public fun last_void_transaction(self: &Safe): u64 {
-        self.last_void_transaction
+    public fun last_stale_transaction(self: &Safe): u64 {
+        self.last_stale_transaction
     }
 
     public fun owners(self: &Safe): &vector<address> {
@@ -204,6 +256,57 @@ module tonal::safe {
 
     public fun get_address(self: &Safe): address {
         self.id.to_address()
+    }
+
+    public fun is_object_locked(self: &Safe, id: ID): bool {
+        if(!self.objects_lock_map.object_transaction.contains(id)) return true;
+        let transaction = self.objects_lock_map.object_transaction[id];
+        transaction <= self.last_stale_transaction
+    }
+
+    public fun is_object_locked_for(self: &Safe, id: ID, transaction: u64): bool {
+        if(!self.objects_lock_map.object_transaction.contains(id)) return false;
+        self.objects_lock_map.object_transaction[id] == transaction
+    }
+
+    public fun get_transactions(self: &Safe, offset: Option<u64>, limit: Option<u64>): vector<ID> {
+        let transactions_count = self.transactions_count();
+
+        let offset = offset.destroy_with_default(0);
+        let limit = limit.destroy_with_default(transactions_count);
+        assert!(offset <= transactions_count, EInvalidTransactionOffset);
+
+        let end = math::min(offset + limit, transactions_count);
+        let (mut i, mut transactions) = (offset, vector::empty());
+
+        while (i < end) {
+            transactions.push_back(self.transactions[i]);
+            i = i + 1;
+        };
+
+        transactions
+    }
+
+    public fun get_locked_bjects(self: &Safe, offset: Option<u64>, limit: Option<u64>): (u64, VecMap<u64, vector<ID>>) {
+        let transactions_count = self.transactions_count();
+
+        let offset = offset.destroy_with_default(self.last_stale_transaction + 1);
+        let limit = limit.destroy_with_default(transactions_count);
+        assert!(offset <= transactions_count, EInvalidTransactionOffset);
+
+        let end = math::min(offset + limit, transactions_count);
+
+        let (mut i, mut map) = (offset, vec_map::empty());
+        while(i < end) {
+            if(self.objects_lock_map.transaction_objects.contains(i)) {
+                let locked_objects = self.objects_lock_map.transaction_objects[i];
+                map.insert(i, locked_objects)
+            };
+
+            i = i + 1;
+        };
+
+        (end, map)
     }
 
     // ===== Assertions & Validations =====
