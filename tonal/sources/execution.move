@@ -9,7 +9,7 @@ module tonal::execution {
     public struct Execution {
         safe: ID,
         transaction: ID,
-        next_action_index: u64,
+        next_executable_index: u64,
     }
 
     public struct Executable {
@@ -38,19 +38,19 @@ module tonal::execution {
         Execution {
             safe: safe.id(),
             transaction: transaction.id(),
-            next_action_index: 0,
+            next_executable_index: 0,
         }
     }
 
     public fun has_next(self: &Execution, transaction: &Transaction): bool {
-        self.next_action_index < transaction.payload().length()
+        self.next_executable_index < transaction.payload().length()
     }
 
-    public fun execute_next(self: &mut Execution, transaction: &Transaction): Executable {
+    public fun next_executable(self: &mut Execution, transaction: &Transaction): Executable {
         assert!(self.transaction == transaction.id(), EExecutionTransactionMismatch);
         assert!(self.has_next(transaction), EExecutionComplete);
-        let action = transaction.payload()[self.next_action_index];
-        self.next_action_index = self.next_action_index + 1;
+        let action = transaction.payload()[self.next_executable_index];
+        self.next_executable_index = self.next_executable_index + 1;
 
         let mut bcs = bcs::new(action);
         let kind = bcs.peel_u64();
@@ -59,19 +59,19 @@ module tonal::execution {
         Executable { safe: self.safe, kind, data }
     }
 
-    public fun execute_all(self: &mut Execution, transaction: &Transaction): vector<Executable> {
+    public fun all_executables(self: &mut Execution, transaction: &Transaction): vector<Executable> {
         let mut executables = vector::empty();
         while(self.has_next(transaction)) {
-            executables.push_back(self.execute_next(transaction));
+            executables.push_back(self.next_executable(transaction));
         };
 
         executables
     }
 
     public fun complete(self: Execution, transaction: &mut Transaction, clock: &Clock, ctx: &TxContext) {
-        let Execution { safe: _, next_action_index, transaction: transaction_id } = self;
+        let Execution { safe: _, next_executable_index, transaction: transaction_id } = self;
         assert!(transaction.id() == transaction_id, EExecutionTransactionMismatch);
-        assert!(next_action_index == transaction.payload().length(), EExecutionComplete);
+        assert!(next_executable_index == transaction.payload().length(), EExecutionComplete);
 
         transaction.confirm_execution(clock, ctx)
     }
