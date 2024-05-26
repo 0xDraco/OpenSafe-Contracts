@@ -1,4 +1,4 @@
-module tonal::object {
+module tonal::transfer {
     use sui::bcs;
     use sui::transfer::Receiving;
 
