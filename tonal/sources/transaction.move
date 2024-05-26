@@ -127,7 +127,7 @@ module tonal::transaction {
 
     public fun approve(self: &mut Transaction, safe: &Safe, clock: &Clock, ctx: &TxContext) {
         safe.assert_sender_owner(ctx);
-        assert!(!self.is_void(safe), ETransactionIsVoid);
+        assert!(!self.is_stale(safe), ETransactionIsVoid);
         assert!(self.status == transaction_status_active(), EInvalidTransactionStatus);
 
         let owner = ctx.sender();
@@ -147,7 +147,7 @@ module tonal::transaction {
 
     public fun reject(self: &mut Transaction, safe: &Safe, clock: &Clock, ctx: &TxContext) {
         safe.assert_sender_owner(ctx);
-        assert!(!self.is_void(safe), ETransactionIsVoid);
+        assert!(!self.is_stale(safe), ETransactionIsVoid);
         assert!(self.status == transaction_status_active(), EInvalidTransactionStatus);
 
         let owner = ctx.sender();
@@ -239,8 +239,8 @@ module tonal::transaction {
 
     /// ===== Helper functions =====
 
-    public fun is_void(self: &Transaction, safe: &Safe): bool {
-        safe.last_void_transaction() != 0 && self.sequence_number <= safe.last_void_transaction()
+    public fun is_stale(self: &Transaction, safe: &Safe): bool {
+        safe.last_stale_transaction() != 0 && self.sequence_number <= safe.last_stale_transaction()
     }
 
     public fun is_execution_delay_expired(self: &Transaction, safe: &Safe, clock: &Clock): bool {
