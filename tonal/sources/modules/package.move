@@ -60,7 +60,7 @@ module tonal::package_management {
         assert!(!field::exists_(safe.uid_inner(), PayloadKey {}), EUpgradeCurrentlyInProgress);
 
         let data = vector::singleton(bcs::to_bytes(&(package.id.to_inner())));
-        let transaction = transaction::create(safe, 0, data, clock, ctx);
+        let transaction = transaction::create(safe, data, clock, ctx);
         let payload = UpgradePayload { digest, modules, dependencies };
 
         field::add(safe.uid_mut_inner(), PayloadKey {}, payload);

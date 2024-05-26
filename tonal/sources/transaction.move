@@ -12,8 +12,6 @@ module tonal::transaction {
         id: UID,
         /// The safe this transaction belongs to.
         safe: ID,
-        /// The kind of transaction (e.g. direct = 0, programmable = 1).
-        kind: u64,
         /// The status of the transaction.
         status: u64,
         /// The index of the transaction in the safe.
@@ -68,12 +66,12 @@ module tonal::transaction {
     const EAlreadyCancelledTransaction: u64 = 6;
 
     // Creates a new Safe transaction.
-    public fun create(safe: &mut Safe, kind: u64, payload: vector<vector<u8>>, clock: &Clock, ctx: &mut TxContext): Transaction {
+    public fun create(safe: &mut Safe, payload: vector<vector<u8>>, clock: &Clock, ctx: &mut TxContext): Transaction {
         safe.assert_sender_owner(ctx);
         assert!(!payload.is_empty(), EEmptyTransactionData);
 
         let metadata = new_metadata(safe.threshold(), ctx.sender(), clock.timestamp_ms());
-        let transaction = new(safe.id(), kind, safe.transactions_count(), payload, metadata, clock.timestamp_ms(), ctx);
+        let transaction = new(safe.id(), safe.transactions_count(), payload, metadata, clock.timestamp_ms(), ctx);
         safe.add_transaction(transaction.id());
         transaction
     }
@@ -81,7 +79,6 @@ module tonal::transaction {
     // Initializes a new transaction object
     fun new(
         safe: ID,
-        kind: u64,
         sequence_number: u64,
         payload: vector<vector<u8>>,
         metadata: TransactionMetadata,
@@ -91,7 +88,6 @@ module tonal::transaction {
         Transaction {
             id: object::new(ctx),
             safe,
-            kind,
             payload,
             metadata,
             sequence_number,
@@ -194,20 +190,6 @@ module tonal::transaction {
         self.metadata.hash.fill(*ctx.digest());
     }
 
-    // fun validate_payload(payload: vector<vector<u8>>, kind: u64) {
-    //     if(kind == CONFIG_TRANSACTION_KIND) { 
-    //         parse_config_transaction(payload) 
-    //     } else if(kind == COINS_TRANSFER_TRANSACTION_KIND) {
-    //         parse_coins_transfer(payload, true);
-    //     }  else if(kind == OBJECTS_TRANSFER_TRANSACTION_KIND) {
-    //         parse_objects_transfer(payload, true);
-    //     } else if(kind == PROGRAMMABLE_TRANSACTION_KIND) {
-    //         assert!(payload.length() == 2, EInvalidTransactionData);
-    //     } else {
-    //         abort EInvalidTransactionKind
-    //     };
-    // }
-
     /// ===== Getter functions =====
 
     public fun id(self: &Transaction): ID {
@@ -228,10 +210,6 @@ module tonal::transaction {
 
     public fun status(self: &Transaction): u64 {
         self.status
-    }
-
-    public fun kind(self: &Transaction): u64 {
-        self.kind
     }
 
     public fun sequence_number(self: &Transaction): u64 {
