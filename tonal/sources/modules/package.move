@@ -27,6 +27,9 @@ module tonal::package_management {
 
     public struct PayloadKey has copy, store, drop {}
 
+    const PACKAGE_UPGRADE_KIND: u64 = 8;
+
+    const EInvalidActionKind: u64 = 0;
     const EUpgradePackageMismatch: u64 = 1;
     const EUpgradeCurrentlyInProgress: u64 = 2;
 
@@ -69,7 +72,9 @@ module tonal::package_management {
     }
 
     public fun execute(safe: &mut Safe, executable: Executable, receiving: Receiving<Package>): UpgradeTicket {
-        let (_kind, data) = executable.destroy(safe);
+        let (kind, data) = executable.destroy(safe);
+        assert!(kind == PACKAGE_UPGRADE_KIND, EInvalidActionKind);
+
         let mut package = transfer::receive(safe.uid_mut_inner(), receiving);
         let payload = field::remove<PayloadKey, UpgradePayload>(&mut package.id, PayloadKey {});
 

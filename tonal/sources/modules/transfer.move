@@ -7,9 +7,9 @@ module tonal::transfer {
     use tonal::safe::Safe;
     use tonal::execution::Executable;
 
-    const TRANSFER_OBJECT_KIND: u64 = 1;
-    const SHARE_OBJECT_KIND: u64 = 2;
-    const FREEZE_OBJECT_KIND: u64 = 3;
+    const TRANSFER_OBJECT_KIND: u64 = 4;
+    const SHARE_OBJECT_KIND: u64 = 5;
+    const FREEZE_OBJECT_KIND: u64 = 6;
 
     const EObjectIDMismatch: u64 = 0;
     const EInvalidActionKind: u64 = 1;

@@ -6,16 +6,16 @@ module tonal::ptb {
     use tonal::utils::addresses_to_ids;
     use tonal::ownership::{Self, Borrowable, Removable};
 
-    const ETransactionTypeMismatch: u64 = 0;
+    const EInvalidActionKind: u64 = 0;
     const ETransactionDigestMismatch: u64 = 1;
 
-    const PTB_TRANSACTION_KIND: u64 = 2;
+    const PTB_KIND: u64 = 7;
  
     public fun execute(safe: &mut Safe, digest: vector<u8>, executable: Executable): (Removable, Borrowable) {
         let (kind, data) = executable.destroy(safe);
         let mut bcs = bcs::new(data);
         
-        assert!(kind == PTB_TRANSACTION_KIND, ETransactionTypeMismatch);
+        assert!(kind == PTB_KIND, EInvalidActionKind);
         assert!(bcs.peel_vec_u8() == digest, ETransactionDigestMismatch);
 
         let removable = bcs.peel_vec_address();

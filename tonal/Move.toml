@@ -21,7 +21,7 @@ SuiSystem = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/su
 # Override = { local = "../conflicting/version", override = true }
 
 [addresses]
-tonal = "0xe2c05a2b00daf8b14dabc17dcb504f6118627ae93b31f03486f29f750b97f040"
+tonal = "0xcf4814b289a117a88b1dab9c8524c9bddbe3a5430a088075924b7ac73907edd0"
 
 # Named addresses will be accessible in Move as `@name`. They're also exported:
 # for example, `std = "0x1"` is exported by the Standard Library.
