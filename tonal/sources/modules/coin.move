@@ -4,7 +4,7 @@ module tonal::coin {
     use sui::transfer::Receiving;
 
     use tonal::safe::Safe;
-    use tonal::executor::Executable;
+    use tonal::execution::Executable;
     use tonal::ownership::{Self, WrappedObject};
 
     const COIN_TRANSFER_KIND: u64 = 0;

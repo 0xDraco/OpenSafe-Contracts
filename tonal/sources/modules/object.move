@@ -3,7 +3,7 @@ module tonal::object {
     use sui::transfer::Receiving;
 
     use tonal::safe::Safe;
-    use tonal::executor::Executable;
+    use tonal::execution::Executable;
 
     const TRANSFER_OBJECT_KIND: u64 = 0;
     const SHARE_OBJECT_KIND: u64 = 0;

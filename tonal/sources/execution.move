@@ -1,12 +1,12 @@
-module tonal::executor {
+module tonal::execution {
+    use sui::bcs;
     use sui::clock::Clock;
 
-    use tonal::parser;
     use tonal::safe::Safe;
     use tonal::transaction::Transaction;
     use tonal::constants::{transaction_status_approved};
 
-    public struct Executor {
+    public struct Execution {
         safe: ID,
         transaction: ID,
         next_action_index: u64,
@@ -27,36 +27,39 @@ module tonal::executor {
     const ETransactionNotApproved: u64 = 1;
     const EExecutionDelayNotExpired: u64 = 2;
     const EExecutionComplete: u64 = 3;
-    const EExecutorTransactionMismatch: u64 = 4;
+    const EExecutionTransactionMismatch: u64 = 4;
 
-    public fun begin(safe: &Safe, transaction: &Transaction, clock: &Clock, ctx: &TxContext): Executor {
+    public fun begin(safe: &Safe, transaction: &Transaction, clock: &Clock, ctx: &TxContext): Execution {
         safe.assert_sender_owner(ctx);
-        assert!(!transaction.is_void(safe), ETransactionIsVoid);
+        assert!(!transaction.is_stale(safe), ETransactionIsVoid);
         assert!(transaction.is_execution_delay_expired(safe, clock), EExecutionDelayNotExpired);
         assert!(transaction.status() == transaction_status_approved(), ETransactionNotApproved);
 
-        Executor {
+        Execution {
             safe: safe.id(),
             transaction: transaction.id(),
             next_action_index: 0,
         }
     }
 
-    public fun has_next(self: &Executor, transaction: &Transaction): bool {
+    public fun has_next(self: &Execution, transaction: &Transaction): bool {
         self.next_action_index < transaction.payload().length()
     }
 
-    public fun execute_next(self: &mut Executor, transaction: &Transaction): Executable {
-        assert!(self.transaction == transaction.id(), EExecutorTransactionMismatch);
+    public fun execute_next(self: &mut Execution, transaction: &Transaction): Executable {
+        assert!(self.transaction == transaction.id(), EExecutionTransactionMismatch);
         assert!(self.has_next(transaction), EExecutionComplete);
         let action = transaction.payload()[self.next_action_index];
         self.next_action_index = self.next_action_index + 1;
 
-        let (kind, data) = parser::parse_data(action);
+        let mut bcs = bcs::new(action);
+        let kind = bcs.peel_u64();
+        let data = bcs.into_remainder_bytes();
+
         Executable { safe: self.safe, kind, data }
     }
 
-    public fun execute_all(self: &mut Executor, transaction: &Transaction): vector<Executable> {
+    public fun execute_all(self: &mut Execution, transaction: &Transaction): vector<Executable> {
         let mut executables = vector::empty();
         while(self.has_next(transaction)) {
             executables.push_back(self.execute_next(transaction));
@@ -65,9 +68,9 @@ module tonal::executor {
         executables
     }
 
-    public fun commit(self: Executor, transaction: &mut Transaction, clock: &Clock, ctx: &TxContext) {
-        let Executor { safe: _, next_action_index, transaction: transaction_id } = self;
-        assert!(transaction.id() == transaction_id, EExecutorTransactionMismatch);
+    public fun complete(self: Execution, transaction: &mut Transaction, clock: &Clock, ctx: &TxContext) {
+        let Execution { safe: _, next_action_index, transaction: transaction_id } = self;
+        assert!(transaction.id() == transaction_id, EExecutionTransactionMismatch);
         assert!(next_action_index == transaction.payload().length(), EExecutionComplete);
 
         transaction.confirm_execution(clock, ctx)

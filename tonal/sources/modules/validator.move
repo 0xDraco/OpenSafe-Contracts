@@ -6,7 +6,7 @@ module tonal::validator {
     use sui_system::validator_cap::UnverifiedValidatorOperationCap;
 
     use tonal::safe::Safe;
-    use tonal::executor::Executable;
+    use tonal::execution::Executable;
 
     const SET_GAS_PRICE: u64 = 0;
     const REPORT_VALIDATOR: u64 = 1;

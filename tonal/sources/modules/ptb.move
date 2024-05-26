@@ -2,7 +2,7 @@ module tonal::ptb {
     use sui::bcs;
 
     use tonal::safe::Safe;
-    use tonal::executor::Executable;
+    use tonal::execution::Executable;
     use tonal::utils::addresses_to_ids;
     use tonal::ownership::{Self, Borrowable, Withdrawable};
 

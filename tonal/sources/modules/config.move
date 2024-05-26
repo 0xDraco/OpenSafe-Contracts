@@ -2,7 +2,7 @@ module tonal::management {
     use sui::bcs;
 
     use tonal::safe::Safe;
-    use tonal::executor::Executable;
+    use tonal::execution::Executable;
 
     const ADD_USER_KIND: u64 = 0;
     const REMOVE_USER_KIND: u64 = 1;

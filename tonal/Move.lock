@@ -2,7 +2,7 @@
 
 [move]
 version = 0
-manifest_digest = "422954ADA4799163CC18354D0D5F100A00AD946E9F836BEA8BA96A4FF84577F5"
+manifest_digest = "CD5DA8085920ACD64674ECAE27B722BAB0D8F4009E9F3CC6F2877F4E716C683C"
 deps_digest = "3C4103934B1E040BB6B23F1D610B4EF9F2F1166A50A104EADCF77467C004C600"
 
 dependencies = [
@@ -46,6 +46,6 @@ published-version = "1"
 
 [env.testnet]
 chain-id = "4c78adac"
-original-published-id = "0xdcaf495e467b31c2d8e8c23504da01834afbc66d40040972c4cf48391344a425"
-latest-published-id = "0xdcaf495e467b31c2d8e8c23504da01834afbc66d40040972c4cf48391344a425"
+original-published-id = "0xe2c05a2b00daf8b14dabc17dcb504f6118627ae93b31f03486f29f750b97f040"
+latest-published-id = "0xe2c05a2b00daf8b14dabc17dcb504f6118627ae93b31f03486f29f750b97f040"
 published-version = "1"

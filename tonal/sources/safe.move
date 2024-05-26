@@ -181,7 +181,7 @@ module tonal::safe {
 
         let mut i = 0;
         while(i <  objects.length()) {
-            let object = objects.pop_back();
+            let object = objects[i];
             if(self.objects_lock_map.object_transaction.contains(object)) {
                 let transaction = self.objects_lock_map.object_transaction[object];
                 assert!(transaction <= self.last_stale_transaction, EObjectIsLocked);

@@ -8,7 +8,7 @@ module tonal::package_management {
     use sui::package::{UpgradeCap, UpgradeTicket, UpgradeReceipt};
 
     use tonal::safe::Safe;
-    use tonal::executor::Executable;
+    use tonal::execution::Executable;
     use tonal::transaction::{Self, Transaction};
 
     public struct Package has key {
