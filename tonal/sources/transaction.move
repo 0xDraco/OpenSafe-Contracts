@@ -5,17 +5,13 @@ module tonal::transaction {
     use sui::vec_map::VecMap;
 
     use tonal::utils;
-    use tonal::safe::Safe;
     use tonal::constants::{transaction_status_active, transaction_status_approved};
 
-    public struct Transaction has key {
-        id: UID,
-        /// The safe this transaction belongs to.
-        safe: ID,
+    public struct Transaction has store {
+        /// The index of the transaction in the safe.
+        index: u64,
         /// The status of the transaction.
         status: u64,
-        /// The index of the transaction in the safe.
-        sequence_number: u64,
         /// The addresses that approved the transaction.
         approved: vector<address>,
         /// The addresses that rejected the transaction.
@@ -45,6 +41,14 @@ module tonal::transaction {
         display: Option<VecMap<String, String>>
     }
 
+    /// This is used to securely hold transaction for approvals, rejections, cancellation or any other actions.
+    public struct SecureTransaction {
+        safe: ID,
+        is_stale: bool,
+        inner: Transaction,
+        is_execution_delay_expired: bool
+    }
+
     // const DIRECT_TRANSACTION_KIND: u64 = 0;
     // const PROGRAMMABLE_TRANSACTION_KIND: u64 = 1;
 
@@ -58,45 +62,44 @@ module tonal::transaction {
     const STATUS_CANCELLED: u64 = 3;
     const STATUS_EXECUTED: u64 = 4;
 
+    const ETransactionIsStale: u64 = 0;
     const EEmptyTransactionData: u64 = 1;
     const EInvalidTransactionStatus: u64 = 2;
-    const ETransactionIsVoid: u64 = 3;
     const EAlreadyApprovedTransaction: u64 = 4;
     const EAlreadyRejectedTransaction: u64 = 5;
     const EAlreadyCancelledTransaction: u64 = 6;
 
     // Creates a new Safe transaction.
-    public fun create(safe: &mut Safe, payload: vector<vector<u8>>, clock: &Clock, ctx: &mut TxContext): Transaction {
-        safe.assert_sender_owner(ctx);
+    public(package) fun new(index: u64, threshold: u64, payload: vector<vector<u8>>, clock: &Clock, creator: address): Transaction {
         assert!(!payload.is_empty(), EEmptyTransactionData);
 
-        let metadata = new_metadata(safe.threshold(), ctx.sender(), clock.timestamp_ms());
-        let transaction = new(safe.id(), safe.transactions_count(), payload, metadata, clock.timestamp_ms(), ctx);
-        safe.add_transaction(transaction.id());
-        transaction
-    }
-
-    // Initializes a new transaction object
-    fun new(
-        safe: ID,
-        sequence_number: u64,
-        payload: vector<vector<u8>>,
-        metadata: TransactionMetadata,
-        timestamp_ms: u64,
-        ctx: &mut TxContext,
-    ): Transaction {
-        Transaction {
-            id: object::new(ctx),
-            safe,
+        let metadata = new_metadata(threshold, creator, clock.timestamp_ms());
+        let transaction = Transaction {
+            index,
             payload,
             metadata,
-            sequence_number,
             status: STATUS_ACTIVE,
             approved: vector::empty(),
             rejected: vector::empty(),
             cancelled: vector::empty(),
-            last_status_update_ms: timestamp_ms,
+            last_status_update_ms: clock.timestamp_ms(),
+        };
+
+        transaction
+    }
+
+    public(package) fun into_secure(self: Transaction, safe: ID, is_stale: bool, is_execution_delay_expired: bool): SecureTransaction {
+        SecureTransaction {
+            safe,
+            is_stale,
+            inner: self,
+            is_execution_delay_expired
         }
+    }
+
+    public(package) fun into_inner(self: SecureTransaction): Transaction {
+        let SecureTransaction { inner, safe: _, is_stale: _, is_execution_delay_expired: _ } = self;
+        inner
     }
 
     // Initializes a new transaction metadata struct
@@ -110,95 +113,68 @@ module tonal::transaction {
         }
     }
 
-    #[allow(lint(share_owned))]
-    public fun share(self: Transaction) {
-        transfer::share_object(self);
+    public fun set_display_metadata(self: &mut SecureTransaction, display: vector<u8>) {
+        self.inner.metadata.display.fill(utils::json_to_vec_map(display))
     }
 
-    public fun display_metadata(self: &mut Transaction, safe: &Safe, display: vector<u8>, ctx: &mut TxContext) {
-        safe.assert_sender_owner(ctx);
-        self.metadata.display.fill(utils::json_to_vec_map(display))
-    }
-
-    public fun lock_transaction_objects(self: &Transaction, safe: &mut Safe, objects: vector<ID>, ctx: &mut TxContext) {
-        safe.assert_sender_owner(ctx);
-        safe.lock_transaction_objects(self.sequence_number, objects)
-    }
-
-    public fun unlock_transaction_objects(self: &Transaction, safe: &mut Safe, ctx: &mut TxContext) {
-        safe.assert_sender_owner(ctx);
-        safe.unlock_transaction_objects(self.sequence_number)
-    }
- 
-    public fun approve(self: &mut Transaction, safe: &Safe, clock: &Clock, ctx: &TxContext) {
-        safe.assert_sender_owner(ctx);
-        assert!(!self.is_stale(safe), ETransactionIsVoid);
-        assert!(self.status == transaction_status_active(), EInvalidTransactionStatus);
+    public fun approve(self: &mut SecureTransaction, threshold: u64, clock: &Clock, ctx: &TxContext) {
+        assert!(!self.is_stale, ETransactionIsStale);
+        assert!(self.inner.status == transaction_status_active(), EInvalidTransactionStatus);
 
         let owner = ctx.sender();
-        assert!(!self.find_approved(owner).is_some(), EAlreadyApprovedTransaction);
+        assert!(!self.inner.find_approved(owner).is_some(), EAlreadyApprovedTransaction);
 
-        let rejected = self.find_rejected(owner);
+        let rejected = self.inner.find_rejected(owner);
         if(rejected.is_some()) {
-            self.rejected.remove(rejected.destroy_some());
+            self.inner.rejected.remove(rejected.destroy_some());
         };
 
-        self.approved.push_back(owner);
-        if(self.approved.length() >= safe.threshold()) {
-            self.status = STATUS_APPROVED;
-            self.last_status_update_ms = clock.timestamp_ms();
+        self.inner.approved.push_back(owner);
+        if(self.inner.approved.length() >= threshold) {
+            self.inner.status = STATUS_APPROVED;
+            self.inner.last_status_update_ms = clock.timestamp_ms();
         }
     }
 
-    public fun reject(self: &mut Transaction, safe: &Safe, clock: &Clock, ctx: &TxContext) {
-        safe.assert_sender_owner(ctx);
-        assert!(!self.is_stale(safe), ETransactionIsVoid);
-        assert!(self.status == transaction_status_active(), EInvalidTransactionStatus);
+    public fun reject(self: &mut SecureTransaction, cutoff: u64, clock: &Clock, ctx: &TxContext) {
+        assert!(!self.is_stale, ETransactionIsStale);
+        assert!(self.inner.status == transaction_status_active(), EInvalidTransactionStatus);
 
         let owner = ctx.sender();
-        assert!(!self.find_rejected(owner).is_some(), EAlreadyRejectedTransaction);
+        assert!(!self.inner.find_rejected(owner).is_some(), EAlreadyRejectedTransaction);
 
-        let approved = self.find_approved(owner);
+        let approved = self.inner.find_approved(owner);
         if(approved.is_some()) {
-            self.approved.remove(approved.destroy_some());
+            self.inner.approved.remove(approved.destroy_some());
         };
 
-        self.rejected.push_back(owner);
-        if(self.rejected.length() >= safe.cutoff()) {
-            self.status = STATUS_REJECTED;
-            self.last_status_update_ms = clock.timestamp_ms();
+        self.inner.rejected.push_back(owner);
+        if(self.inner.rejected.length() >= cutoff) {
+            self.inner.status = STATUS_REJECTED;
+            self.inner.last_status_update_ms = clock.timestamp_ms();
         }
     }
 
-    public fun cancel(self: &mut Transaction, safe: &Safe, clock: &Clock, ctx: &TxContext) {
-        safe.assert_sender_owner(ctx);
-        assert!(self.status == transaction_status_approved(), EInvalidTransactionStatus);
+    public fun cancel(self: &mut SecureTransaction, threshold: u64, clock: &Clock, ctx: &TxContext) {
+        assert!(self.inner.status == transaction_status_approved(), EInvalidTransactionStatus);
         
         let owner = ctx.sender();
-        assert!(!self.find_cancelled(owner).is_some(), EAlreadyCancelledTransaction);
+        assert!(!self.inner.find_cancelled(owner).is_some(), EAlreadyCancelledTransaction);
 
-        self.cancelled.push_back(owner);
-        if(self.cancelled.length() >= safe.threshold()) {
-            self.status = STATUS_CANCELLED;
-            self.last_status_update_ms = clock.timestamp_ms();
+        self.inner.cancelled.push_back(owner);
+        if(self.inner.cancelled.length() >= threshold) {
+            self.inner.status = STATUS_CANCELLED;
+            self.inner.last_status_update_ms = clock.timestamp_ms();
         }
     }
 
-    public(package) fun confirm_execution(self: &mut Transaction, clock: &Clock, ctx: &TxContext) {
-        self.status = STATUS_EXECUTED;
-        self.last_status_update_ms = clock.timestamp_ms();
-        self.metadata.hash.fill(*ctx.digest());
+    public fun confirm_execution(self: &mut SecureTransaction, clock: &Clock, ctx: &TxContext) {
+        self.inner.status = STATUS_EXECUTED;
+        self.inner.last_status_update_ms = clock.timestamp_ms();
+        self.inner.metadata.hash.fill(*ctx.digest());
     }
 
     /// ===== Getter functions =====
-
-    public fun id(self: &Transaction): ID {
-        object::id(self)
-    }
-
-    public fun safe(self: &Transaction): ID {
-        self.safe
-    }
 
     public fun last_status_update_ms(self: &Transaction): u64 {
         self.last_status_update_ms
@@ -212,8 +188,8 @@ module tonal::transaction {
         self.status
     }
 
-    public fun sequence_number(self: &Transaction): u64 {
-        self.sequence_number
+    public fun index(self: &Transaction): u64 {
+        self.index
     }
 
     public fun hash(self: &Transaction): &Option<vector<u8>> {
@@ -225,14 +201,6 @@ module tonal::transaction {
     }
 
     /// ===== Helper functions =====
-
-    public fun is_stale(self: &Transaction, safe: &Safe): bool {
-        safe.last_stale_transaction() != 0 && self.sequence_number <= safe.last_stale_transaction()
-    }
-
-    public fun is_execution_delay_expired(self: &Transaction, safe: &Safe, clock: &Clock): bool {
-        clock.timestamp_ms() >= self.last_status_update_ms + safe.execution_delay_ms()
-    }
 
     public fun find_rejected(self: &Transaction, owner: address): Option<u64> {
         let (mut i, len) = (0, self.rejected.length());
@@ -271,5 +239,9 @@ module tonal::transaction {
         };
 
         option::none()
+    }
+
+    public fun inner(self: &SecureTransaction): &Transaction {
+        &self.inner
     }
 }

@@ -2,14 +2,12 @@ module tonal::package_management {
     use std::string::String;
 
     use sui::bcs;
-    use sui::clock::Clock;
     use sui::transfer::Receiving;
     use sui::dynamic_field as field;
     use sui::package::{UpgradeCap, UpgradeTicket, UpgradeReceipt};
 
     use tonal::safe::Safe;
     use tonal::execution::Executable;
-    use tonal::transaction::{Self, Transaction};
 
     public struct Package has key {
         id: UID,
@@ -51,25 +49,14 @@ module tonal::package_management {
         create(safe, name, upgrade_cap, ctx)
     }
 
-    public fun upgrade(
-        safe: &mut Safe,
-        digest: vector<u8>,
-        dependencies: vector<ID>,
-        modules: vector<vector<u8>>,
-        receiving: Receiving<Package>,
-        clock: &Clock,
-        ctx: &mut TxContext
-    ): Transaction {
+    public fun add_upgrade_payload(safe: &mut Safe, digest: vector<u8>, dependencies: vector<ID>, modules: vector<vector<u8>>, receiving: Receiving<Package>) {
         let package = transfer::receive(safe.uid_mut_inner(), receiving);
         assert!(!field::exists_(safe.uid_inner(), PayloadKey {}), EUpgradeCurrentlyInProgress);
 
-        let data = vector::singleton(bcs::to_bytes(&(package.id.to_inner())));
-        let transaction = transaction::create(safe, data, clock, ctx);
         let payload = UpgradePayload { digest, modules, dependencies };
 
         field::add(safe.uid_mut_inner(), PayloadKey {}, payload);
-        transfer::transfer(package, safe.get_address());
-        transaction
+        transfer::transfer(package, safe.get_address())
     }
 
     public fun execute(safe: &mut Safe, executable: Executable, receiving: Receiving<Package>): UpgradeTicket {

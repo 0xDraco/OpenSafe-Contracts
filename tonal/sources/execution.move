@@ -3,12 +3,12 @@ module tonal::execution {
     use sui::clock::Clock;
 
     use tonal::safe::Safe;
-    use tonal::transaction::Transaction;
     use tonal::constants::{transaction_status_approved};
+    use tonal::transaction::{Transaction, SecureTransaction};
 
     public struct Execution {
         safe: ID,
-        transaction: ID,
+        transaction_index: u64,
         next_executable_index: u64,
     }
 
@@ -23,7 +23,7 @@ module tonal::execution {
     public use fun executable_data as Executable.data;
     public use fun executable_safe as Executable.safe;
 
-    const ETransactionIsVoid: u64 = 0;
+    const ETransactionIsStale: u64 = 0;
     const ETransactionNotApproved: u64 = 1;
     const EExecutionDelayNotExpired: u64 = 2;
     const EExecutionComplete: u64 = 3;
@@ -31,14 +31,14 @@ module tonal::execution {
 
     public fun begin(safe: &Safe, transaction: &Transaction, clock: &Clock, ctx: &TxContext): Execution {
         safe.assert_sender_owner(ctx);
-        assert!(!transaction.is_stale(safe), ETransactionIsVoid);
-        assert!(transaction.is_execution_delay_expired(safe, clock), EExecutionDelayNotExpired);
+        assert!(!safe.is_stale_transaction(transaction), ETransactionIsStale);
+        assert!(safe.is_execution_delay_expired(transaction, clock), EExecutionDelayNotExpired);
         assert!(transaction.status() == transaction_status_approved(), ETransactionNotApproved);
 
         Execution {
             safe: safe.id(),
-            transaction: transaction.id(),
             next_executable_index: 0,
+            transaction_index: transaction.index(),
         }
     }
 
@@ -47,7 +47,7 @@ module tonal::execution {
     }
 
     public fun next_executable(self: &mut Execution, transaction: &Transaction): Executable {
-        assert!(self.transaction == transaction.id(), EExecutionTransactionMismatch);
+        assert!(self.transaction_index == transaction.index(), EExecutionTransactionMismatch);
         assert!(self.has_next(transaction), EExecutionComplete);
         let action = transaction.payload()[self.next_executable_index];
         self.next_executable_index = self.next_executable_index + 1;
@@ -68,10 +68,10 @@ module tonal::execution {
         executables
     }
 
-    public fun complete(self: Execution, transaction: &mut Transaction, clock: &Clock, ctx: &TxContext) {
-        let Execution { safe: _, next_executable_index, transaction: transaction_id } = self;
-        assert!(transaction.id() == transaction_id, EExecutionTransactionMismatch);
-        assert!(next_executable_index == transaction.payload().length(), EExecutionComplete);
+    public fun complete(self: Execution, transaction: &mut SecureTransaction, clock: &Clock, ctx: &TxContext) {
+        let Execution { safe: _, next_executable_index, transaction_index } = self;
+        assert!(transaction.inner().index() == transaction_index, EExecutionTransactionMismatch);
+        assert!(next_executable_index == transaction.inner().payload().length(), EExecutionComplete);
 
         transaction.confirm_execution(clock, ctx)
     }

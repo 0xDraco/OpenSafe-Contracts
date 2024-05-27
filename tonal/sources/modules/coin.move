@@ -9,11 +9,6 @@ module tonal::coin {
         split_from_coin(safe, coin, amounts, ctx)
     }
 
-    public fun merge<T>(safe: &mut Safe, destination: Receiving<Coin<T>>, sources: vector<Receiving<Coin<T>>>, ctx: &TxContext) {
-        let coin = merge_and_return_coin(safe, destination, sources, ctx);
-        transfer::public_transfer(coin, safe.get_address());
-    }
-
     public fun split_from_coin<T>(safe: &mut Safe, mut coin: Coin<T>, amounts: vector<u64>, ctx: &mut TxContext): vector<ID> {
         safe.assert_sender_owner(ctx);
         let (mut i, mut ids) = (0, vector::empty());
@@ -32,6 +27,22 @@ module tonal::coin {
         };
 
        ids
+    }
+
+    public fun merge<T>(safe: &mut Safe, destination: Receiving<Coin<T>>, sources: vector<Receiving<Coin<T>>>, ctx: &TxContext) {
+        let coin = merge_and_return_coin(safe, destination, sources, ctx);
+        transfer::public_transfer(coin, safe.get_address());
+    }
+
+    public fun merge_and_split<T>(safe: &mut Safe, destination: Receiving<Coin<T>>, sources: vector<Receiving<Coin<T>>>, amount: u64, ctx: &mut TxContext): ID {
+        let coin = merge_and_return_coin(safe, destination, sources, ctx);
+        split_from_coin(safe, coin, vector[amount], ctx)[0]
+    }
+
+
+    public fun merge_and_split_multiple<T>(safe: &mut Safe, destination: Receiving<Coin<T>>, sources: vector<Receiving<Coin<T>>>, amounts: vector<u64>, ctx: &mut TxContext): vector<ID> {
+        let coin = merge_and_return_coin(safe, destination, sources, ctx);
+        split_from_coin(safe, coin, amounts, ctx)
     }
 
     public(package) fun merge_and_return_coin<T>(safe: &mut Safe, destination: Receiving<Coin<T>>, mut sources: vector<Receiving<Coin<T>>>, ctx: &TxContext): Coin<T> {

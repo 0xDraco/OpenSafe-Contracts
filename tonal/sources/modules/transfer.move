@@ -45,16 +45,11 @@ module tonal::transfer {
     public fun prepare_coins<T>(safe: &mut Safe, mut receivings: vector<Receiving<Coin<T>>>, amounts: vector<u64>, ctx: &mut TxContext): vector<ID> {
         safe.assert_sender_owner(ctx);
 
-        let coins;
         let receiving = receivings.pop_back();
         if(!receivings.is_empty()) {
-            let coin = coin::merge_and_return_coin(safe, receiving, receivings, ctx);
-            coins = coin::split_from_coin(safe, coin, amounts, ctx);
-        } else {
-            coins = coin::split(safe, receiving, amounts, ctx);
+            return coin::merge_and_split_multiple(safe, receiving, receivings, amounts, ctx)
         };
-
-        coins
+        coin::split(safe, receiving, amounts, ctx)
     }
 
     public fun build_objects_transfer(objects: vector<ID>, recipients: vector<address>): vector<vector<u8>> {
@@ -62,6 +57,9 @@ module tonal::transfer {
         let (mut i, mut transfers) = (0, vector::empty());
         while(i < objects.length()) {
             let mut bytes = vector::empty();
+
+            let kind = TRANSFER_OBJECT_KIND;
+            bytes.append(bcs::to_bytes(&kind));
             bytes.append(bcs::to_bytes(&objects[i]));
             bytes.append(bcs::to_bytes(&recipients[i]));
 
