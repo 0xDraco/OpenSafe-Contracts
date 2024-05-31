@@ -42,7 +42,7 @@ module tonal::ownership {
         transfer::public_transfer(object, safe.get_address());
     }
     
-    public fun withdraw<T: key + store>(safe: &mut Safe, removable: &mut Removable, receiving: Receiving<T>): T {
+    public fun remove<T: key + store>(safe: &mut Safe, removable: &mut Removable, receiving: Receiving<T>): T {
         let object = transfer::public_receive(safe.uid_mut_inner(), receiving);
         let (is_removable, i) = removable.objects.index_of(&object::id(&object));
 

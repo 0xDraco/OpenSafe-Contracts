@@ -3,42 +3,32 @@ module tonal::package_management {
 
     use sui::bcs;
     use sui::transfer::Receiving;
-    use sui::dynamic_field as field;
     use sui::package::{UpgradeCap, UpgradeTicket, UpgradeReceipt};
 
     use tonal::safe::Safe;
     use tonal::execution::Executable;
+    use tonal::transaction::SecureTransaction;
 
-    public struct Package has key {
+    public struct IndexedPackage has key {
         id: UID,
         name: String,
         last_upgrade_ms: u64,
-        upgrades: vector<ID>,
+        upgrades: vector<u64>,
         upgrade_cap: UpgradeCap
     }
 
-    public struct UpgradePayload has store, drop {
-        digest: vector<u8>,
-        dependencies: vector<ID>,
-        modules: vector<vector<u8>>
-    }
-
-    public struct PayloadKey has copy, store, drop {}
-
     const PACKAGE_UPGRADE_KIND: u64 = 8;
-    // const POLICY_CHANGE_KIND: u64 = 9;
 
     const EInvalidActionKind: u64 = 0;
     const EUpgradePackageMismatch: u64 = 1;
-    const EUpgradeCurrentlyInProgress: u64 = 2;
 
     public fun create(safe: &mut Safe, name: String, upgrade_cap: UpgradeCap, ctx: &mut TxContext) {
-        let package = Package {
+        let package = IndexedPackage {
             id: object::new(ctx),
             name,
+            upgrade_cap,
             last_upgrade_ms: 0,
             upgrades: vector::empty(),
-            upgrade_cap
         };
 
         transfer::transfer(package, safe.get_address())
@@ -49,35 +39,29 @@ module tonal::package_management {
         create(safe, name, upgrade_cap, ctx)
     }
 
-    public fun add_upgrade_payload(safe: &mut Safe, digest: vector<u8>, dependencies: vector<ID>, modules: vector<vector<u8>>, receiving: Receiving<Package>) {
-        let package = transfer::receive(safe.uid_mut_inner(), receiving);
-        assert!(!field::exists_(safe.uid_inner(), PayloadKey {}), EUpgradeCurrentlyInProgress);
-
-        let payload = UpgradePayload { digest, modules, dependencies };
-
-        field::add(safe.uid_mut_inner(), PayloadKey {}, payload);
+    public fun add_upgrade(safe: &mut Safe, secure: &mut SecureTransaction, receiving: Receiving<IndexedPackage>) {
+        let mut package = transfer::receive(safe.uid_mut_inner(), receiving);
+        package.upgrades.push_back(secure.inner().index());
         transfer::transfer(package, safe.get_address())
     }
 
-    public fun execute(safe: &mut Safe, executable: Executable, receiving: Receiving<Package>): UpgradeTicket {
+    public fun execute(safe: &mut Safe, executable: Executable, receiving: Receiving<IndexedPackage>): (UpgradeTicket, IndexedPackage) {
         let (kind, data) = executable.destroy(safe);
         assert!(kind == PACKAGE_UPGRADE_KIND, EInvalidActionKind);
 
+        let mut bcs = bcs::new(data);
         let mut package = transfer::receive(safe.uid_mut_inner(), receiving);
-        let payload = field::remove<PayloadKey, UpgradePayload>(&mut package.id, PayloadKey {});
 
-        let package_id = bcs::new(data).peel_address().to_id();
+        let digest = bcs.peel_vec_u8();
+        let package_id = bcs.peel_address().to_id();
         assert!(package_id == package.id.to_inner(), EUpgradePackageMismatch);
        
         let policy = package.upgrade_cap.policy();
-        let ticket = package.upgrade_cap.authorize_upgrade(policy, payload.digest);
-
-        transfer::transfer(package, safe.get_address());
-        ticket
+        let ticket = package.upgrade_cap.authorize_upgrade(policy, digest);
+        (ticket, package)
     }
 
-    public fun commit(safe: &mut Safe, receipt: UpgradeReceipt, receiving: Receiving<Package>) {
-        let mut package = transfer::receive(safe.uid_mut_inner(), receiving);
+    public fun commit(safe: &mut Safe, receipt: UpgradeReceipt, mut package: IndexedPackage) {
         package.upgrade_cap.commit_upgrade(receipt);
         transfer::transfer(package, safe.get_address());
     }

@@ -2,7 +2,7 @@ module tonal::utils {
     use std::type_name;
     use std::string::{String, utf8};
 
-    use sui::bcs;
+    use sui::bcs::{Self, BCS};
     use sui::vec_map::{Self, VecMap};
 
     public fun type_bytes<T>(): vector<u8> {
@@ -37,14 +37,12 @@ module tonal::utils {
         map
    }
 
-   public fun addresses_to_ids(addresses: vector<address>): vector<ID> {
-        let (mut i, mut ids) = (0, vector::empty());
-
-        while(i < ids.length()) {
-            ids.push_back(addresses[i].to_id());
+    public fun peel_vec_id(bcs: &mut BCS): vector<ID> {
+        let (len, mut i, mut res) = (bcs.peel_vec_length(), 0, vector[]);
+        while (i < len) {
+            res.push_back(bcs.peel_address().to_id());
             i = i + 1;
         };
-
-        ids
-   } 
+        res
+    }
 }

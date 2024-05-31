@@ -34,6 +34,11 @@ module tonal::coin {
         transfer::public_transfer(coin, safe.get_address());
     }
 
+    public fun merge_all_and_split<T>(safe: &mut Safe, destination: Receiving<Coin<T>>, sources: vector<Receiving<Coin<T>>>, amount: u64, ctx: &mut TxContext): ID {
+        let coin = merge_and_return_coin(safe, destination, sources, ctx);
+        split_from_coin(safe, coin, vector[amount], ctx)[0]
+    }
+
     public fun merge_and_split<T>(safe: &mut Safe, destination: Receiving<Coin<T>>, sources: vector<Receiving<Coin<T>>>, amount: u64, ctx: &mut TxContext): ID {
         let coin = merge_and_return_coin(safe, destination, sources, ctx);
         split_from_coin(safe, coin, vector[amount], ctx)[0]

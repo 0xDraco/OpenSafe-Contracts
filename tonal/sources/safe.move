@@ -6,6 +6,7 @@ module tonal::safe {
     use sui::clock::Clock;
     use sui::url::{Self, Url};
     use sui::table::{Self, Table};
+    use sui::object_table::{Self, ObjectTable};
     use sui::vec_map::{Self, VecMap};
 
     use tonal::transaction::{Self, Transaction, SecureTransaction};
@@ -21,8 +22,8 @@ module tonal::safe {
         execution_delay_ms: u64,
         /// The sequence number of the last voided transaction.
         last_stale_transaction: u64,
-        /// A `TableVec` storing the the IDs of the safe transactions.
-        transactions: Table<u64, Transaction>,
+        /// A `ObjectTable` storing the the IDs of the safe transactions.
+        transactions: ObjectTable<u64, Transaction>,
         /// This stores objects that are to be used in created transactions.
         /// This is used to help us avoid using objects that were created or used as input in another safe transction 
         objects_lock_map: ObjectsLockMap
@@ -75,7 +76,7 @@ module tonal::safe {
             execution_delay_ms: 0,
             owners: vector::empty(),
             last_stale_transaction: 0,
-            transactions: table::new(ctx),
+            transactions: object_table::new(ctx),
             objects_lock_map: new_objects_lock_map(ctx)
         };
 
@@ -109,11 +110,11 @@ module tonal::safe {
         self.metadata.logo_url = option::some(url::new_unsafe(logo_url));
     }
 
-    public fun create_transaction(self: &mut Safe, payload: vector<vector<u8>>, clock: &Clock, ctx: &TxContext): SecureTransaction {
+    public fun create_transaction(self: &mut Safe, payload: vector<vector<u8>>, clock: &Clock, ctx: &mut TxContext): SecureTransaction {
         self.assert_sender_owner(ctx);
         let index = self.transactions_count();
-        let transaction = transaction::new(index, self.threshold, payload, clock, ctx.sender());
-        transaction.into_secure(self.id(), false, false)
+        let transaction = transaction::new(index, self.threshold, payload, clock, ctx);
+        transaction.into_secure(self.id(), self.threshold, self.cutoff(), false, false)
     }
 
     public fun get_secure_transaction(self: &mut Safe, index: u64, clock: &Clock, ctx: &TxContext): SecureTransaction {
@@ -122,7 +123,7 @@ module tonal::safe {
         let transaction = self.transactions.remove(index);
         let is_stale = self.is_stale_transaction(&transaction);
         let is_execution_delay_expired = self.is_execution_delay_expired(&transaction, clock);
-        transaction.into_secure(self.id(), is_stale,is_execution_delay_expired)
+        transaction.into_secure(self.id(), self.threshold, self.cutoff(), is_stale, is_execution_delay_expired)
     }
 
     public fun return_secure_transaction(self: &mut Safe, secure: SecureTransaction) {
@@ -299,23 +300,23 @@ module tonal::safe {
         clock.timestamp_ms() >= transaction.last_status_update_ms() + self.execution_delay_ms
     }
 
-    // public fun get_transactions(self: &Safe, offset: Option<u64>, limit: Option<u64>): &vector<&Transaction> {
-    //     let transactions_count = self.transactions_count();
+    public fun get_transaction_ids(self: &Safe, offset: Option<u64>, limit: Option<u64>): vector<ID> {
+        let transactions_count = self.transactions_count();
 
-    //     let offset = offset.destroy_with_default(0);
-    //     let limit = limit.destroy_with_default(transactions_count);
-    //     assert!(offset <= transactions_count, EInvalidTransactionOffset);
+        let offset = offset.destroy_with_default(0);
+        let limit = limit.destroy_with_default(transactions_count);
+        assert!(offset <= transactions_count, EInvalidTransactionOffset);
 
-    //     let end = math::min(offset + limit, transactions_count);
-    //     let (mut i, mut transactions) = (offset, vector::empty());
+        let end = math::min(offset + limit, transactions_count);
+        let (mut i, mut transactions) = (offset, vector::empty());
 
-    //     while (i < end) {
-    //         transactions.push_back(self.transactions.borrow(i));
-    //         i = i + 1;
-    //     };
+        while (i < end) {
+            transactions.push_back(self.transactions.borrow(i).id());
+            i = i + 1;
+        };
 
-    //     &transactions
-    // }
+        transactions
+    }
 
     public fun get_locked_bjects(self: &Safe, offset: Option<u64>, limit: Option<u64>): (u64, VecMap<u64, vector<ID>>) {
         let transactions_count = self.transactions_count();
