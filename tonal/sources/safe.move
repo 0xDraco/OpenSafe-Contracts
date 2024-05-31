@@ -5,9 +5,7 @@ module tonal::safe {
     use sui::math;
     use sui::clock::Clock;
     use sui::url::{Self, Url};
-    use sui::table::{Self, Table};
     use sui::object_table::{Self, ObjectTable};
-    use sui::vec_map::{Self, VecMap};
 
     use tonal::transaction::{Self, Transaction, SecureTransaction};
 
@@ -47,10 +45,6 @@ module tonal::safe {
     const EExecutionDelayOutOfRange: u64 = 5;
     const EInvalidOwnerCap: u64 = 6;
     const EInvalidTransactionOffset: u64 = 7;
-    const ETransactionLocksDuplicate: u64 = 8;
-    const EObjectIsLocked: u64 = 9;
-    const ETransactionLockNotFound: u64 = 10;
-    const ELockedTransactionObjectMismatch: u64 = 11;
 
     // ===== Public functions =====
 

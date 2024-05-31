@@ -1,7 +1,7 @@
 module tonal::lock_map {
     use sui::table::{Self, Table};
 
-    use tonal::transaction::{SecureTransaction};
+    // use tonal::transaction::{SecureTransaction};
 
     /// This represents a shared object that keep track of safe objects that are being used (or will be used) in a transaction.
     /// This helps us avoid removing or transferring an object that is scheduled to be used in a transction.
