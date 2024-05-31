@@ -54,6 +54,7 @@ module tonal::transaction {
         id: ID,
         cutoff: u64,
         threshold: u64,
+        stale_index: u64
     }
 
     const STATUS_ACTIVE: u64 = 0;
@@ -94,10 +95,17 @@ module tonal::transaction {
         safe: ID,
         threshold: u64,
         cutoff: u64,
+        stale_index: u64,
         is_stale: bool,
         is_execution_delay_expired: bool
     ): SecureTransaction {
-        let safe = SecureTransactionSafe { id: safe, threshold, cutoff };
+        let safe = SecureTransactionSafe { 
+            id: safe, 
+            threshold, 
+            cutoff,
+            stale_index 
+        };
+
         SecureTransaction {
             safe,
             is_stale,

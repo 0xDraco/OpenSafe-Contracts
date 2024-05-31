@@ -24,9 +24,6 @@ module tonal::safe {
         last_stale_transaction: u64,
         /// A `ObjectTable` storing the the IDs of the safe transactions.
         transactions: ObjectTable<u64, Transaction>,
-        /// This stores objects that are to be used in created transactions.
-        /// This is used to help us avoid using objects that were created or used as input in another safe transction 
-        objects_lock_map: ObjectsLockMap
     }
 
     public struct SafeMetadata has store {
@@ -38,11 +35,6 @@ module tonal::safe {
         description: Option<String>,
         /// The timestamp when the safe was created.
         created_at_ms: u64
-    }
-
-    public struct ObjectsLockMap has store {
-        object_transaction: Table<ID, u64>,
-        transaction_objects: Table<u64, vector<ID>>
     }
 
     const MAX_EXECUTION_DELAY_MS: u64 = 3 * 24 * 60 * 60 * 1000; // 3 days
@@ -76,8 +68,7 @@ module tonal::safe {
             execution_delay_ms: 0,
             owners: vector::empty(),
             last_stale_transaction: 0,
-            transactions: object_table::new(ctx),
-            objects_lock_map: new_objects_lock_map(ctx)
+            transactions: object_table::new(ctx)
         };
 
         let (mut i, len) = (0, owners.length());
@@ -114,7 +105,7 @@ module tonal::safe {
         self.assert_sender_owner(ctx);
         let index = self.transactions_count();
         let transaction = transaction::new(index, self.threshold, payload, clock, ctx);
-        transaction.into_secure(self.id(), self.threshold, self.cutoff(), false, false)
+        transaction.into_secure(self.id(), self.threshold, self.cutoff(), self.last_stale_transaction(), false, false)
     }
 
     public fun get_secure_transaction(self: &mut Safe, index: u64, clock: &Clock, ctx: &TxContext): SecureTransaction {
@@ -123,7 +114,7 @@ module tonal::safe {
         let transaction = self.transactions.remove(index);
         let is_stale = self.is_stale_transaction(&transaction);
         let is_execution_delay_expired = self.is_execution_delay_expired(&transaction, clock);
-        transaction.into_secure(self.id(), self.threshold, self.cutoff(), is_stale, is_execution_delay_expired)
+        transaction.into_secure(self.id(), self.threshold, self.cutoff(), self.last_stale_transaction(), is_stale, is_execution_delay_expired)
     }
 
     public fun return_secure_transaction(self: &mut Safe, secure: SecureTransaction) {
@@ -144,13 +135,6 @@ module tonal::safe {
             logo_url,
             description,
             created_at_ms: clock.timestamp_ms()
-        }
-    }
-
-    public fun new_objects_lock_map(ctx: &mut TxContext): ObjectsLockMap {
-        ObjectsLockMap {
-            object_transaction: table::new(ctx),
-            transaction_objects: table::new(ctx)
         }
     }
 
@@ -191,40 +175,6 @@ module tonal::safe {
 
     public(package) fun uid_inner(self: &Safe): &UID {
         &self.id
-    }
-
-    public fun lock_transaction_objects(self: &mut Safe, transaction: &Transaction, objects: vector<ID>, ctx: &TxContext) {
-        self.assert_sender_owner(ctx);
-        assert!(!self.objects_lock_map.transaction_objects.contains(transaction.index()), ETransactionLocksDuplicate);
-        self.objects_lock_map.transaction_objects.add(transaction.index(), objects);
-
-        let mut i = 0;
-        while(i <  objects.length()) {
-            let object = objects[i];
-            if(self.objects_lock_map.object_transaction.contains(object)) {
-                let transaction = self.objects_lock_map.object_transaction[object];
-                assert!(transaction <= self.last_stale_transaction, EObjectIsLocked);
-
-                self.objects_lock_map.object_transaction.remove(object);
-            };
-
-            self.objects_lock_map.object_transaction.add(object, transaction.index());
-            i = i + 1;
-        };
-    }
-
-    public fun unlock_transaction_objects(self: &mut Safe, transaction: &Transaction, ctx: &TxContext) {
-        self.assert_sender_owner(ctx);
-        assert!(self.objects_lock_map.transaction_objects.contains(transaction.index()), ETransactionLockNotFound);
-        let mut objects = self.objects_lock_map.transaction_objects.remove(transaction.index());
-
-        while(!objects.is_empty()) {
-            let object = objects.pop_back();
-            assert!(
-                transaction.index() == self.objects_lock_map.object_transaction.remove(object),
-                ELockedTransactionObjectMismatch
-            );
-        }
     }
 
     // ===== getter functions =====
@@ -281,17 +231,6 @@ module tonal::safe {
         self.id.to_address()
     }
 
-    public fun is_object_usable(self: &Safe, id: ID): bool {
-        if(!self.objects_lock_map.object_transaction.contains(id)) return true;
-        let transaction = self.objects_lock_map.object_transaction[id];
-        transaction <= self.last_stale_transaction
-    }
-
-    public fun is_object_locked_for_transaction(self: &Safe, id: ID, transaction: u64): bool {
-        if(!self.objects_lock_map.object_transaction.contains(id)) return false;
-        self.objects_lock_map.object_transaction[id] == transaction
-    }
-
     public fun is_stale_transaction(self: &Safe, transaction: &Transaction): bool {
         self.last_stale_transaction != 0 && transaction.index() <= self.last_stale_transaction
     }
@@ -316,28 +255,6 @@ module tonal::safe {
         };
 
         transactions
-    }
-
-    public fun get_locked_bjects(self: &Safe, offset: Option<u64>, limit: Option<u64>): (u64, VecMap<u64, vector<ID>>) {
-        let transactions_count = self.transactions_count();
-
-        let offset = offset.destroy_with_default(self.last_stale_transaction + 1);
-        let limit = limit.destroy_with_default(transactions_count);
-        assert!(offset <= transactions_count, EInvalidTransactionOffset);
-
-        let end = math::min(offset + limit, transactions_count);
-
-        let (mut i, mut map) = (offset, vec_map::empty());
-        while(i < end) {
-            if(self.objects_lock_map.transaction_objects.contains(i)) {
-                let locked_objects = self.objects_lock_map.transaction_objects[i];
-                map.insert(i, locked_objects)
-            };
-
-            i = i + 1;
-        };
-
-        (end, map)
     }
 
     // ===== Assertions & Validations =====
