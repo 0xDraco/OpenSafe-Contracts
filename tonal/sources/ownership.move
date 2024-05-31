@@ -34,7 +34,7 @@ module tonal::ownership {
         }
     }
 
-    public fun put_back<T: key + store>(safe: &mut Safe, borrowable: &mut Borrowable, object: T) {
+    public fun return_<T: key + store>(safe: &mut Safe, borrowable: &mut Borrowable, object: T) {
         let (was_borrowed, i) = borrowable.borrowed.index_of(&object::id(&object));
         assert!(was_borrowed, EInvalidBorrowedObject);
         borrowable.borrowed.remove(i);
