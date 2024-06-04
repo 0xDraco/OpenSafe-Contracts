@@ -20,7 +20,7 @@ module tonal::safe {
         execution_delay_ms: u64,
         /// The sequence number of the last voided transaction.
         last_stale_transaction: u64,
-        /// A `ObjectTable` storing the the IDs of the safe transactions.
+        /// A `ObjectTable` storing the safe transactions.
         transactions: ObjectTable<u64, Transaction>,
     }
 
