@@ -1,4 +1,4 @@
-module tonal::self {
+module tonal::lock_map {
     use sui::table::{Self, Table};
 
     use tonal::transaction::SecureTransaction;
