@@ -70,6 +70,16 @@ module tonal::transaction {
     const EAlreadyRejectedTransaction: u64 = 5;
     const EAlreadyCancelledTransaction: u64 = 6;
 
+
+    public use fun is_secure_transaction_stale as SecureTransaction.is_stale;
+    public use fun is_secure_transaction_execution_delay_expired as SecureTransaction.execution_delay_expired;
+
+    public use fun secure_safe_stale_index as SecureTransactionSafe.stale_index;
+    public use fun secure_safe_threshold as SecureTransactionSafe.threshold;
+    public use fun secure_safe_cutoff as SecureTransactionSafe.cutoff;
+    public use fun secure_safe_id as SecureTransactionSafe.id;
+
+
     // Creates a new Safe transaction.
     public(package) fun new(index: u64, threshold: u64, payload: vector<vector<u8>>, clock: &Clock, ctx: &mut TxContext): Transaction {
         assert!(!payload.is_empty(), EEmptyTransactionData);
@@ -262,7 +272,38 @@ module tonal::transaction {
         self.id.to_inner()
     }
 
+
+    // SecureTransaction fields getters
+
     public fun inner(self: &SecureTransaction): &Transaction {
         &self.inner
+    }
+
+    public fun safe(self: &SecureTransaction): &SecureTransactionSafe {
+        &self.safe
+    }
+
+    public fun is_secure_transaction_stale(self: &SecureTransaction): bool {
+        self.is_stale
+    }
+
+    public fun is_secure_transaction_execution_delay_expired(self: &SecureTransaction): bool {
+        self.is_execution_delay_expired
+    }
+
+    public fun secure_safe_stale_index(self: &SecureTransactionSafe): u64 {
+        self.stale_index
+    }
+
+    public fun secure_safe_threshold(self: &SecureTransactionSafe): u64 {
+        self.threshold
+    }
+
+    public fun secure_safe_cutoff(self: &SecureTransactionSafe): u64 {
+        self.cutoff
+    }
+
+    public fun secure_safe_id(self: &SecureTransactionSafe): ID {
+        self.id
     }
 }
